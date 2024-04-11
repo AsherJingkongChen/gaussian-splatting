@@ -100,11 +100,11 @@ SET DISTUTILS_USE_SDK=1 # Windows only
 ```shell
 conda env create --file conda.cuda.yml
  # Python 3.12 deprecates distutils
-conda activate gaussian_splatting_2
+conda activate gaussian_splatting
 conda env config vars set SETUPTOOLS_USE_DISTUTILS=
-conda activate gaussian_splatting_2
+conda activate gaussian_splatting
 conda env config vars unset SETUPTOOLS_USE_DISTUTILS
-conda activate gaussian_splatting_2 # Refresh the environment
+conda activate gaussian_splatting # Refresh the environment
 pip install submodules/*
 ```
 Please note that this process assumes that you have CUDA SDK **12** installed, not **11**. For modifications, see below.
@@ -131,7 +131,7 @@ To update packages manually at your own risk, run the shell commands below:
   1. Install packages
   ```shell
   conda install python cuda cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy -c pytorch -c nvidia
-  conda install plyfile tqdm -c conda-forge
+  conda install pillow plyfile tqdm -c conda-forge
   ```
 
   2. Update the existed packages
