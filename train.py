@@ -18,6 +18,7 @@ import sys
 from scene import Scene, GaussianModel
 from utils.general_utils import safe_state
 import uuid
+import time
 from tqdm import tqdm
 from utils.image_utils import psnr
 from argparse import ArgumentParser, Namespace
@@ -47,6 +48,9 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     viewpoint_stack = None
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress", dynamic_ncols=True)
+    memory_usage_records: list[int] = []
+    loop_start = time.time()
+
     first_iter += 1
     for iteration in range(first_iter, opt.iterations + 1):        
         if network_gui.conn == None:
@@ -105,6 +109,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             # Log and save
             training_report(tb_writer, iteration, Ll1, loss, l1_loss, iter_start.elapsed_time(iter_end), testing_iterations, scene, render, (pipe, background))
+            memory_usage_records.append(torch.cuda.memory_reserved())
+
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
                 scene.save(iteration)
@@ -130,6 +136,24 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
             if (iteration in checkpoint_iterations):
                 print("\n[ITER {}] Saving Checkpoint".format(iteration))
                 torch.save((gaussians.capture(), iteration), scene.model_path + "/chkpnt" + str(iteration) + ".pth")
+
+    # Save performance reports
+    loop_end = time.time()
+    duration = int(loop_end - loop_start)
+    memory_usage_records: torch.Tensor = torch.tensor(memory_usage_records).sort().values
+    memory_usage_p95 = (memory_usage_records[int(0.95 * len(memory_usage_records))] >> 20).item()
+    memory_usage_p50 = (memory_usage_records[int(0.50 * len(memory_usage_records))] >> 20).item()
+
+    from json import dump
+    with open(os.path.join(scene.model_path, "perf_report.json"), "w") as perf_report_file:
+        dump(
+            {
+                "train_duration_s": duration,
+                "train_vram_p95_mb": memory_usage_p95,
+                "train_vram_p50_mb": memory_usage_p50,
+            },
+            perf_report_file,
+        )
 
 def prepare_output_and_logger(args):    
     if not args.model_path:
