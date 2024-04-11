@@ -125,7 +125,7 @@ To update packages manually at your own risk, run the shell commands below:
 
   1. Install packages
   ```shell
-  conda install python cuda cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy -c pytorch -c nvidia
+  conda install python cuda cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy plyfile tqdm -c pytorch -c nvidia -c conda-forge
   ```
 
   2. Update the existed packages

@@ -1,6 +1,7 @@
 *.pyc
 .python-version
 .vscode
+input
 output
 build
 diff_rasterization/diff_rast.egg-info

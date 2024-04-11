@@ -1,5 +1,6 @@
 name: gaussian_splatting
 channels:
+  - conda-forge
   - nvidia
   - pytorch
   - defaults
@@ -10,8 +11,9 @@ dependencies:
   - brotli-python=1.0.9=py312h6a678d5_7
   - bzip2=1.0.8=h5eee18b_5
   - ca-certificates=2024.3.11=h06a4308_0
-  - certifi=2024.2.2=py312h06a4308_0
+  - certifi=2024.2.2=pyhd8ed1ab_0
   - charset-normalizer=2.0.4=pyhd3eb1b0_0
+  - colorama=0.4.6=pyhd8ed1ab_0
   - cuda=12.1.0=0
   - cuda-cccl=12.4.127=0
   - cuda-command-line-tools=12.1.1=0
@@ -127,6 +129,7 @@ dependencies:
   - openssl=3.0.13=h7f8727e_0
   - pillow=10.2.0=py312h5eee18b_0
   - pip=23.3.1=py312h06a4308_0
+  - plyfile=1.0.3=pyhd8ed1ab_0
   - pysocks=1.7.1=py312h06a4308_0
   - python=3.12.2=h996f2a0_0
   - pytorch=2.2.2=py3.12_cuda12.1_cudnn8.9.2_0
@@ -142,6 +145,7 @@ dependencies:
   - tk=8.6.12=h1ccaba5_0
   - torchaudio=2.2.2=py312_cu121
   - torchvision=0.17.2=py312_cu121
+  - tqdm=4.66.2=pyhd8ed1ab_0
   - typing_extensions=4.9.0=py312h06a4308_1
   - tzdata=2024a=h04d1e81_0
   - urllib3=2.1.0=py312h06a4308_1
