@@ -146,7 +146,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     memory_usage_p05 = (memory_usage_records[int(0.05 * len(memory_usage_records))].item() >> 20)
     memory_usage_p95 = (memory_usage_records[int(0.95 * len(memory_usage_records))].item() >> 20)
     memory_usage_avg = (int(memory_usage_records.float().mean().item()) >> 20)
-    model_sizes_by_iter = {f"train_model_size_i{i}_mb" for i, size in model_size_records.items()}
+    model_sizes_by_iter = {f"train_model_size_i{i}_mb": size >> 20 for i, size in model_size_records.items()}
 
     from json import dump
     with open(os.path.join(scene.model_path, "perf_report.json"), "w") as perf_report_file:
@@ -159,6 +159,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
                 **model_sizes_by_iter,
             },
             perf_report_file,
+            indent=1,
         )
 
 def prepare_output_and_logger(args):    
