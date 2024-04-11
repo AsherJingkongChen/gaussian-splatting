@@ -67,7 +67,7 @@ The codebase has 4 main components:
 - An OpenGL-based real-time viewer to render trained models in real-time.
 - A script to help you turn your own images into optimization-ready SfM data sets
 
-The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04. Instructions for setting up and running each of them are found in the sections below.
+The components have different requirements w.r.t. both hardware and software. They have been tested on Windows 10 and Ubuntu Linux 22.04 (CUDA only). Instructions for setting up and running each of them are found in the sections below.
 
 ## Optimizer
 
@@ -81,19 +81,26 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Software Requirements
 - Conda (recommended for easy setup)
-- C++ Compiler for PyTorch extensions (we used Visual Studio 2019 for Windows)
-- CUDA SDK 11 for PyTorch extensions, install *after* Visual Studio (we used 11.8, **known issues with 11.6**)
-- C++ Compiler and CUDA SDK must be compatible
+- C++ Compiler for PyTorch extensions
+- CUDA SDK 12.x for PyTorch extensions. Windows users should install it *after* Visual Studio.
+- Environment variables including `$PATH` or `%PATH%` should be set carefully
 
 ### Setup
 
 #### Local Setup
 
-Our default, provided install method is based on Conda package and environment management:
+For CUDA users, it is recommended to check the existence of `CUDA_HOME` environment variable.
+
+Our default, provided install method is based on Conda package and environment management.
+Run the shell commands below:
+
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
-conda env create --file environment.yml
+conda env create --file conda.cuda.yml
 conda activate gaussian_splatting
+conda env config vars unset SETUPTOOLS_USE_DISTUTILS # Python 3.12 deprecates distutils
+conda activate gaussian_splatting # Refresh the environment
+pip install submodules/*
 ```
 Please note that this process assumes that you have CUDA SDK **11** installed, not **12**. For modifications, see below.
 
@@ -101,19 +108,30 @@ Tip: Downloading packages and creating a new environment with Conda can require 
 
 ```shell
 conda config --add pkgs_dirs <Drive>/<pkg_path>
-conda env create --file environment.yml --prefix <Drive>/<env_path>/gaussian_splatting
+conda env create --file conda.cuda.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
+conda env config vars unset SETUPTOOLS_USE_DISTUTILS
+conda activate <Drive>/<env_path>/gaussian_splatting # Refresh the environment
+pip install submodules/*
 ```
 
 #### Modifications
 
-If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.8, PyTorch 2.0.0, CUDA 12). Make sure to create an environment where PyTorch and its CUDA runtime version match and the installed CUDA SDK has no major version difference with PyTorch's CUDA version.
+If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.12, PyTorch 2.2.0, CUDA 12). Make sure to create an environment where PyTorch and its CUDA runtime version match and the installed CUDA SDK has no major version difference with PyTorch's CUDA version.
 
-To update packages manually at your own risk, run the commands below:
-```shell
-conda install python cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy -c pytorch -c nvidia
-conda update python cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy -c pytorch -c nvidia
-```
+To update packages manually at your own risk, run the shell commands below:
+
+- Using CUDA
+
+  1. Install packages
+  ```shell
+  conda install python cuda cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy -c pytorch -c nvidia
+  ```
+
+  2. Update the existed packages
+  ```shell
+  conda update --all
+  ```
 
 #### Known Issues
 
