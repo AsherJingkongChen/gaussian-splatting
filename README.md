@@ -96,10 +96,15 @@ Run the shell commands below:
 
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
+```
+```shell
 conda env create --file conda.cuda.yml
-conda activate gaussian_splatting
-conda env config vars unset SETUPTOOLS_USE_DISTUTILS # Python 3.12 deprecates distutils
-conda activate gaussian_splatting # Refresh the environment
+ # Python 3.12 deprecates distutils
+conda activate gaussian_splatting_2
+conda env config vars set SETUPTOOLS_USE_DISTUTILS=
+conda activate gaussian_splatting_2
+conda env config vars unset SETUPTOOLS_USE_DISTUTILS
+conda activate gaussian_splatting_2 # Refresh the environment
 pip install submodules/*
 ```
 Please note that this process assumes that you have CUDA SDK **11** installed, not **12**. For modifications, see below.
