@@ -27,9 +27,9 @@ def init(wish_host, wish_port):
     global host, port, listener
     host = wish_host
     port = wish_port
-    listener.bind((host, port))
-    listener.listen()
-    listener.settimeout(0)
+    # listener.bind((host, port))
+    # listener.listen()
+    # listener.settimeout(0)
 
 def try_connect():
     global conn, addr, listener
