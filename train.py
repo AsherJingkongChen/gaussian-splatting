@@ -49,6 +49,7 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     ema_loss_for_log = 0.0
     progress_bar = tqdm(range(first_iter, opt.iterations), desc="Training progress", dynamic_ncols=True)
     memory_usage_records: list[int] = []
+    model_size_records: dict[int, int] = {}
     loop_start = time.time()
 
     first_iter += 1
@@ -113,7 +114,8 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
 
             if (iteration in saving_iterations):
                 print("\n[ITER {}] Saving Gaussians".format(iteration))
-                scene.save(iteration)
+                model_size = scene.save(iteration)
+                model_size_records[iteration] = model_size
 
             # Densification
             if iteration < opt.densify_until_iter:
@@ -141,16 +143,20 @@ def training(dataset, opt, pipe, testing_iterations, saving_iterations, checkpoi
     loop_end = time.time()
     duration = int(loop_end - loop_start)
     memory_usage_records: torch.Tensor = torch.tensor(memory_usage_records).sort().values
-    memory_usage_p95 = (memory_usage_records[int(0.95 * len(memory_usage_records))] >> 20).item()
-    memory_usage_p50 = (memory_usage_records[int(0.50 * len(memory_usage_records))] >> 20).item()
+    memory_usage_p05 = (memory_usage_records[int(0.05 * len(memory_usage_records))].item() >> 20)
+    memory_usage_p95 = (memory_usage_records[int(0.95 * len(memory_usage_records))].item() >> 20)
+    memory_usage_avg = (int(memory_usage_records.float().mean().item()) >> 20)
+    model_sizes_by_iter = {f"train_model_size_i{i}_mb" for i, size in model_size_records.items()}
 
     from json import dump
     with open(os.path.join(scene.model_path, "perf_report.json"), "w") as perf_report_file:
         dump(
             {
-                "train_duration_s": duration,
+                "train_duration_sec": duration,
+                "train_vram_p05_mb": memory_usage_p05,
                 "train_vram_p95_mb": memory_usage_p95,
-                "train_vram_p50_mb": memory_usage_p50,
+                "train_vram_avg_mb": memory_usage_avg,
+                **model_sizes_by_iter,
             },
             perf_report_file,
         )
