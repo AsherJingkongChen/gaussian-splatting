@@ -134,7 +134,7 @@ class GaussianModel:
             pcd.points.shape[0],
             dtype=torch.float32,
             device="cuda",
-        ).log_normal_(0, torch.ones(1).exp_().item())
+        ).log_normal_(0, torch.ones(1).double().exp_().item())
         dist2_random += torch.finfo(torch.float32).eps
         dist2_random /= dist2_random.max()
 
