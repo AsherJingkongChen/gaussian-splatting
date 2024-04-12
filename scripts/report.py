@@ -73,8 +73,7 @@ for report_dir_path in REPORT_DIR_PATHS:
 
     reports[report_id] = report_recombined
 
-# Format reports
-
+# Format reports into GitHub-flavored Markdown table
 reports_repr_gfm_table = ""
 
 reports_repr_gfm_table += "| MODEL_ID |"
@@ -93,4 +92,5 @@ for id, report in reports.items():
         reports_repr_gfm_table += f" {report_attrval} |"
     reports_repr_gfm_table += "\n"
 
+# Print the report
 print(reports_repr_gfm_table, end="", file=OUTPUT_STREAM)
