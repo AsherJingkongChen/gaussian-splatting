@@ -133,13 +133,11 @@ class GaussianModel:
         dist2_random = torch.empty(
             pcd.points.shape[0],
             dtype=torch.float32,
-        ).log_normal_(
-            0,
-            2.718281828459045,
-            generator=torch.Generator().manual_seed(2718281828459045)
-        ).cuda()
-        dist2_random += torch.finfo(torch.float32).eps
+            device="cuda",
+        ).log_normal_(0, 2.718282)
+        dist2_random.clamp_min_(torch.finfo(torch.float32).eps)
         dist2_random /= dist2_random.max()
+        dist2_random.clamp_min_(torch.finfo(torch.float32).eps)
 
         scales = torch.log(torch.sqrt(dist2_random))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
