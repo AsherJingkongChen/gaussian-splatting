@@ -41,8 +41,8 @@ for report_dir_path in REPORT_DIR_PATHS:
 
     # Transform schema
     report_metrics = report_metrics["ours_30000"]
-    report_metrics["METRIC_LPIPS"] = f"{report_metrics.pop('LPIPS'):.3f}"
-    report_metrics["METRIC_SSIM"] = f"{report_metrics.pop('SSIM'):.3f}"
+    report_metrics["METRIC_LPIPS"] = f"{report_metrics.pop('LPIPS'):.4f}"
+    report_metrics["METRIC_SSIM"] = f"{report_metrics.pop('SSIM'):.4f}"
     report_metrics.pop("PSNR")
 
     report_performance["TRAIN_TIME"] = str(
