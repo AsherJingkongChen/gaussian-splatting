@@ -130,14 +130,18 @@ class GaussianModel:
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        dist2_random = torch.empty(
-            pcd.points.shape[0],
-            dtype=torch.float32,
-            device="cuda",
-        ).log_normal_(0, 2.7182818)
-        dist2_random.clamp_min_(torch.finfo(torch.float32).eps)
-        dist2_random /= (dist2_random.max() / 2.7182818)
-        dist2_random.clamp_min_(torch.finfo(torch.float32).eps)
+        dist2_random = (
+            torch.empty(
+                pcd.points.shape[0],
+                dtype=torch.float32,
+                device="cuda",
+            )
+            .log_normal_(0, 2.7182818)
+            .clamp_min_(torch.finfo(torch.float32).eps)
+        )
+        dist2_random = (
+            dist2_random / (dist2_random.max() / 2.7182818)
+        ).clamp_min_(2e-7)
 
         scales = torch.log(torch.sqrt(dist2_random))[...,None].repeat(1, 3)
         rots = torch.zeros((fused_point_cloud.shape[0], 4), device="cuda")
