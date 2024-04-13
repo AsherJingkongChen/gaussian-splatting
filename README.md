@@ -99,12 +99,13 @@ SET DISTUTILS_USE_SDK=1 # Windows only
 ```
 ```shell
 conda env create --file conda.cuda.yml
- # Python 3.12 deprecates distutils
 conda activate gaussian_splatting
+# Python 3.12 deprecates distutils
+# Unset and refresh the environment
 conda env config vars set SETUPTOOLS_USE_DISTUTILS=
 conda activate gaussian_splatting
 conda env config vars unset SETUPTOOLS_USE_DISTUTILS
-conda activate gaussian_splatting # Refresh the environment
+conda activate gaussian_splatting
 pip install submodules/*
 ```
 Please note that this process assumes that you have CUDA SDK **12** installed, not **11**. For modifications, see below.
@@ -115,8 +116,12 @@ Tip: Downloading packages and creating a new environment with Conda can require 
 conda config --add pkgs_dirs <Drive>/<pkg_path>
 conda env create --file conda.cuda.yml --prefix <Drive>/<env_path>/gaussian_splatting
 conda activate <Drive>/<env_path>/gaussian_splatting
+# Python 3.12 deprecates distutils
+# Unset and refresh the environment
+conda env config vars set SETUPTOOLS_USE_DISTUTILS=
+conda activate <Drive>/<env_path>/gaussian_splatting
 conda env config vars unset SETUPTOOLS_USE_DISTUTILS
-conda activate <Drive>/<env_path>/gaussian_splatting # Refresh the environment
+conda activate <Drive>/<env_path>/gaussian_splatting
 pip install submodules/*
 ```
 
@@ -130,8 +135,7 @@ To update packages manually at your own risk, run the shell commands below:
 
   1. Install packages
   ```shell
-  conda install python cuda cuda-toolkit pytorch pytorch-cuda torchaudio torchvision numpy -c pytorch -c nvidia
-  conda install pillow plyfile tqdm -c conda-forge
+  conda cuda numpy pillow pip plyfile python pytorch pytorch-cuda setuptools torchaudio torchvision tqdm wheel -c conda-forge nvidia pytorch
   ```
 
   2. Update the existed packages
