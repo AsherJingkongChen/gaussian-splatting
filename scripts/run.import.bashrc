@@ -16,13 +16,14 @@ run-im2vd() {
     local VIDEO_PATH="$2"
 
     ffmpeg \
+        -y \
         -pattern_type glob \
         -i "$IMAGE_GLOB" \
         -framerate 60 -r 60 \
         -an -c:v libx265 -tag:v hvc1 \
-        -crf 18 -preset slow \
+        -crf 16 -preset medium \
         -pix_fmt yuv422p \
-        -vf "scale=iw*2:ih*2" \
+        -vf "scale=trunc(iw*3 / 2)*2:trunc(ih*3 / 2)*2" \
         "$VIDEO_PATH"
 }
 
