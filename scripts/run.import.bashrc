@@ -1,6 +1,6 @@
 run-3dgs() {
-    local INPUT_NAME=$1
-    local OUTPUT_NAME=$2
+    local INPUT_NAME="$1"
+    local OUTPUT_NAME="$2"
 
     date
     python train.py -s input/$INPUT_NAME -m output/$OUTPUT_NAME --eval && \
@@ -12,8 +12,8 @@ run-report() {
     ./scripts/report.py > report/output.md
 }
 run-im2vd() {
-    local IMAGE_GLOB=$1
-    local VIDEO_PATH=$2
+    local IMAGE_GLOB="$1"
+    local VIDEO_PATH="$2"
 
     ffmpeg \
         -pattern_type glob \
