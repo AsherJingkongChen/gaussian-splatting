@@ -34,10 +34,13 @@ for report_dir_path in REPORT_DIR_PATHS:
     # Read files with parameters
     report_metrics_path = report_dir_path / REPORT_NAME_METRICS
     report_performance_path = report_dir_path / REPORT_NAME_PERFORMANCE
-    with report_metrics_path.open("r") as report_metrics_file:
-        report_metrics: dict = load_json(report_metrics_file)
-    with report_performance_path.open("r") as report_performance_file:
-        report_performance: dict = load_json(report_performance_file)
+    try:
+        with report_metrics_path.open("r") as report_metrics_file:
+            report_metrics: dict = load_json(report_metrics_file)
+        with report_performance_path.open("r") as report_performance_file:
+            report_performance: dict = load_json(report_performance_file)
+    except FileNotFoundError:
+        continue
 
     # Transform schema
     report_metrics = report_metrics["ours_30000"]
