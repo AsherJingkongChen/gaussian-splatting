@@ -75,14 +75,13 @@ The optimizer uses PyTorch and CUDA extensions in a Python environment to produc
 
 ### Hardware Requirements
 
-- CUDA-ready GPU with Compute Capability 7.0+
+- CUDA-ready GPU with Compute Capability 7.0+ and ablility to install SDK 12.x
 - 24 GB VRAM (to train to paper evaluation quality)
 - Please see FAQ for smaller VRAM configurations
 
 ### Software Requirements
 - Conda (recommended for easy setup)
 - C++ Compiler for PyTorch extensions
-- CUDA SDK 12.x for PyTorch extensions. Windows users should install it *after* Visual Studio.
 - Environment variables including `$PATH` or `%PATH%` should be set carefully
 
 ### Setup
@@ -97,6 +96,7 @@ Run the shell commands below:
 ```shell
 SET DISTUTILS_USE_SDK=1 # Windows only
 ```
+
 ```shell
 conda env create --file conda.cuda.yml
 conda activate gaussian_splatting
@@ -127,7 +127,7 @@ pip install submodules/*
 
 #### Modifications
 
-If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.12, PyTorch 2.2.0, CUDA 12). Make sure to create an environment where PyTorch and its CUDA runtime version match and the installed CUDA SDK has no major version difference with PyTorch's CUDA version.
+If you can afford the disk space, we recommend using our environment files for setting up a training environment identical to ours. If you want to make modifications, please note that major version changes might affect the results of our method. However, our (limited) experiments suggest that the codebase works just fine inside a more up-to-date environment (Python 3.12.2, PyTorch 2.2.2, CUDA 12.1). Make sure to create an environment where PyTorch and its CUDA runtime version match and the installed CUDA SDK has no major version difference with PyTorch's CUDA version.
 
 To update packages manually at your own risk, run the shell commands below:
 
