@@ -22,12 +22,12 @@ from setuptools import setup
 
 setup(
     name="simple_knn",
-    version="0.0.0+stub.does.nothing"
+    version="0.0.0+stub.does.nothing",
     # ext_modules=[
     #     CUDAExtension(
     #         name="simple_knn._C",
     #         sources=[
-    #         "spatial.cu", 
+    #         "spatial.cu",
     #         "simple_knn.cu",
     #         "ext.cpp"],
     #         extra_compile_args={"nvcc": ["--verbose"], "cxx": cxx_compiler_flags})
@@ -36,5 +36,3 @@ setup(
     #     'build_ext': BuildExtension
     # }
 )
-
-print("WARNINY")
