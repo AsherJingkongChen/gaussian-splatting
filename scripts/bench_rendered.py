@@ -13,7 +13,7 @@ def print_section(id: str) -> None:
 """)
     for part in ("train", "test"):
         for img_id, _ in enumerate(PROJECT_ROOT.glob(f"output/{id}-original/{part}/ours_30000/gt/*.png")):
-            if img_id % 10 != 0:
+            if img_id % 20 != 0:
                 continue
             print(
                 f"| ![](../output/{id}-original/{part}/ours_30000/gt/{img_id:05d}.png) "
