@@ -22,6 +22,6 @@ def print_section(id: str) -> None:
             )
     print()
 
-for input_dir in PROJECT_ROOT.glob("input/*"):
+for input_dir in sorted(PROJECT_ROOT.glob("input/*")):
     id = input_dir.name
     print_section(id)
