@@ -2,6 +2,7 @@
 .ipynb_checkpoints
 .python-version
 .vscode
+.conda
 input
 output
 report
