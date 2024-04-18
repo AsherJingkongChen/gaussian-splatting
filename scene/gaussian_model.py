@@ -130,7 +130,7 @@ class GaussianModel:
 
         print("Number of points at initialisation : ", fused_point_cloud.shape[0])
 
-        rnd = torch.Generator("cuda").manual_seed(2024)
+        rnd = torch.Generator("cuda").manual_seed(0x3D65)
         dist2_random = (
             torch.empty(
                 pcd.points.shape[0],
