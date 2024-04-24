@@ -11,10 +11,10 @@ dependencies:
   - pip=24.0.0
   - plyfile=1.0.3
   - python=3.12.2
-  - pytorch=2.2.2
+  - pytorch=2.3.0
   - pytorch-cuda=12.1
   - setuptools=69.2.0
-  - torchaudio=2.2.2
-  - torchvision=0.17.2
+  - torchaudio=2.3.0
+  - torchvision=0.18.0
   - tqdm=4.66.2
   - wheel=0.41.2
