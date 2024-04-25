@@ -98,7 +98,7 @@ SET DISTUTILS_USE_SDK=1 # Windows only
 ```
 
 ```shell
-conda env create --file conda.cuda.yml
+conda env create --file conda.cuda.yml --name gaussian_splatting
 conda activate gaussian_splatting
 # Python 3.12 deprecates distutils
 # Unset and refresh the environment
