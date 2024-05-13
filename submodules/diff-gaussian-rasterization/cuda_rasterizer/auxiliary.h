@@ -76,16 +76,6 @@ __forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float
 	return transformed;
 }
 
-__forceinline__ __device__ float3 transformVec4x3(const float3& p, const float* matrix)
-{
-	float3 transformed = {
-		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z,
-		matrix[1] * p.x + matrix[5] * p.y + matrix[9] * p.z,
-		matrix[2] * p.x + matrix[6] * p.y + matrix[10] * p.z,
-	};
-	return transformed;
-}
-
 __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, const float* matrix)
 {
 	float3 transformed = {
@@ -94,14 +84,6 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 		matrix[8] * p.x + matrix[9] * p.y + matrix[10] * p.z,
 	};
 	return transformed;
-}
-
-__forceinline__ __device__ float dnormvdz(float3 v, float3 dv)
-{
-	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
-	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
-	float dnormvdz = (-v.x * v.z * dv.x - v.y * v.z * dv.y + (sum2 - v.z * v.z) * dv.z) * invsum32;
-	return dnormvdz;
 }
 
 __forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
@@ -129,11 +111,6 @@ __forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
 	dnormvdv.z = ((sum2 - v.z * v.z) * dv.z - v.z * (vdv_sum - vdv.z)) * invsum32;
 	dnormvdv.w = ((sum2 - v.w * v.w) * dv.w - v.w * (vdv_sum - vdv.w)) * invsum32;
 	return dnormvdv;
-}
-
-__forceinline__ __device__ float sigmoid(float x)
-{
-	return 1.0f / (1.0f + expf(-x));
 }
 
 __forceinline__ __device__ bool in_frustum(int idx,
