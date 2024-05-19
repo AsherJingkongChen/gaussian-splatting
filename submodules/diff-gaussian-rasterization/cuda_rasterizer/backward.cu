@@ -64,30 +64,30 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 			float xx = x * x, yy = y * y, zz = z * z;
 			float xy = x * y, yz = y * z, xz = x * z;
 
-			float dRGBdsh4 = SH_C2[0] * xy;
-			float dRGBdsh5 = SH_C2[1] * yz;
-			float dRGBdsh6 = SH_C2[2] * (2.f * zz - xx - yy);
-			float dRGBdsh7 = SH_C2[3] * xz;
-			float dRGBdsh8 = SH_C2[4] * (xx - yy);
+			float dRGBdsh4 = SH_C2_0 * xy;
+			float dRGBdsh5 = SH_C2_1 * yz;
+			float dRGBdsh6 = SH_C2_2 * (2.f * zz - xx - yy);
+			float dRGBdsh7 = SH_C2_3 * xz;
+			float dRGBdsh8 = SH_C2_4 * (xx - yy);
 			dL_dsh[4] = dRGBdsh4 * dL_dRGB;
 			dL_dsh[5] = dRGBdsh5 * dL_dRGB;
 			dL_dsh[6] = dRGBdsh6 * dL_dRGB;
 			dL_dsh[7] = dRGBdsh7 * dL_dRGB;
 			dL_dsh[8] = dRGBdsh8 * dL_dRGB;
 
-			dRGBdx += SH_C2[0] * y * sh[4] + SH_C2[2] * 2.f * -x * sh[6] + SH_C2[3] * z * sh[7] + SH_C2[4] * 2.f * x * sh[8];
-			dRGBdy += SH_C2[0] * x * sh[4] + SH_C2[1] * z * sh[5] + SH_C2[2] * 2.f * -y * sh[6] + SH_C2[4] * 2.f * -y * sh[8];
-			dRGBdz += SH_C2[1] * y * sh[5] + SH_C2[2] * 2.f * 2.f * z * sh[6] + SH_C2[3] * x * sh[7];
+			dRGBdx += SH_C2_0 * y * sh[4] + SH_C2_2 * 2.f * -x * sh[6] + SH_C2_3 * z * sh[7] + SH_C2_4 * 2.f * x * sh[8];
+			dRGBdy += SH_C2_0 * x * sh[4] + SH_C2_1 * z * sh[5] + SH_C2_2 * 2.f * -y * sh[6] + SH_C2_4 * 2.f * -y * sh[8];
+			dRGBdz += SH_C2_1 * y * sh[5] + SH_C2_2 * 2.f * 2.f * z * sh[6] + SH_C2_3 * x * sh[7];
 
 			if (deg > 2)
 			{
-				float dRGBdsh9 = SH_C3[0] * y * (3.f * xx - yy);
-				float dRGBdsh10 = SH_C3[1] * xy * z;
-				float dRGBdsh11 = SH_C3[2] * y * (4.f * zz - xx - yy);
-				float dRGBdsh12 = SH_C3[3] * z * (2.f * zz - 3.f * xx - 3.f * yy);
-				float dRGBdsh13 = SH_C3[4] * x * (4.f * zz - xx - yy);
-				float dRGBdsh14 = SH_C3[5] * z * (xx - yy);
-				float dRGBdsh15 = SH_C3[6] * x * (xx - 3.f * yy);
+				float dRGBdsh9 = SH_C3_0 * y * (3.f * xx - yy);
+				float dRGBdsh10 = SH_C3_1 * xy * z;
+				float dRGBdsh11 = SH_C3_2 * y * (4.f * zz - xx - yy);
+				float dRGBdsh12 = SH_C3_3 * z * (2.f * zz - 3.f * xx - 3.f * yy);
+				float dRGBdsh13 = SH_C3_4 * x * (4.f * zz - xx - yy);
+				float dRGBdsh14 = SH_C3_5 * z * (xx - yy);
+				float dRGBdsh15 = SH_C3_6 * x * (xx - 3.f * yy);
 				dL_dsh[9] = dRGBdsh9 * dL_dRGB;
 				dL_dsh[10] = dRGBdsh10 * dL_dRGB;
 				dL_dsh[11] = dRGBdsh11 * dL_dRGB;
@@ -97,29 +97,29 @@ __device__ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::
 				dL_dsh[15] = dRGBdsh15 * dL_dRGB;
 
 				dRGBdx += (
-					SH_C3[0] * sh[9] * 3.f * 2.f * xy +
-					SH_C3[1] * sh[10] * yz +
-					SH_C3[2] * sh[11] * -2.f * xy +
-					SH_C3[3] * sh[12] * -3.f * 2.f * xz +
-					SH_C3[4] * sh[13] * (-3.f * xx + 4.f * zz - yy) +
-					SH_C3[5] * sh[14] * 2.f * xz +
-					SH_C3[6] * sh[15] * 3.f * (xx - yy));
+					SH_C3_0 * sh[9] * 3.f * 2.f * xy +
+					SH_C3_1 * sh[10] * yz +
+					SH_C3_2 * sh[11] * -2.f * xy +
+					SH_C3_3 * sh[12] * -3.f * 2.f * xz +
+					SH_C3_4 * sh[13] * (-3.f * xx + 4.f * zz - yy) +
+					SH_C3_5 * sh[14] * 2.f * xz +
+					SH_C3_6 * sh[15] * 3.f * (xx - yy));
 
 				dRGBdy += (
-					SH_C3[0] * sh[9] * 3.f * (xx - yy) +
-					SH_C3[1] * sh[10] * xz +
-					SH_C3[2] * sh[11] * (-3.f * yy + 4.f * zz - xx) +
-					SH_C3[3] * sh[12] * -3.f * 2.f * yz +
-					SH_C3[4] * sh[13] * -2.f * xy +
-					SH_C3[5] * sh[14] * -2.f * yz +
-					SH_C3[6] * sh[15] * -3.f * 2.f * xy);
+					SH_C3_0 * sh[9] * 3.f * (xx - yy) +
+					SH_C3_1 * sh[10] * xz +
+					SH_C3_2 * sh[11] * (-3.f * yy + 4.f * zz - xx) +
+					SH_C3_3 * sh[12] * -3.f * 2.f * yz +
+					SH_C3_4 * sh[13] * -2.f * xy +
+					SH_C3_5 * sh[14] * -2.f * yz +
+					SH_C3_6 * sh[15] * -3.f * 2.f * xy);
 
 				dRGBdz += (
-					SH_C3[1] * sh[10] * xy +
-					SH_C3[2] * sh[11] * 4.f * 2.f * yz +
-					SH_C3[3] * sh[12] * 3.f * (2.f * zz - xx - yy) +
-					SH_C3[4] * sh[13] * 4.f * 2.f * xz +
-					SH_C3[5] * sh[14] * (xx - yy));
+					SH_C3_1 * sh[10] * xy +
+					SH_C3_2 * sh[11] * 4.f * 2.f * yz +
+					SH_C3_3 * sh[12] * 3.f * (2.f * zz - xx - yy) +
+					SH_C3_4 * sh[13] * 4.f * 2.f * xz +
+					SH_C3_5 * sh[14] * (xx - yy));
 			}
 		}
 	}

@@ -41,22 +41,22 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 			float xx = x * x, yy = y * y, zz = z * z;
 			float xy = x * y, yz = y * z, xz = x * z;
 			result = result +
-				SH_C2[0] * xy * sh[4] +
-				SH_C2[1] * yz * sh[5] +
-				SH_C2[2] * (2.0f * zz - xx - yy) * sh[6] +
-				SH_C2[3] * xz * sh[7] +
-				SH_C2[4] * (xx - yy) * sh[8];
+				SH_C2_0 * xy * sh[4] +
+				SH_C2_1 * yz * sh[5] +
+				SH_C2_2 * (2.0f * zz - xx - yy) * sh[6] +
+				SH_C2_3 * xz * sh[7] +
+				SH_C2_4 * (xx - yy) * sh[8];
 
 			if (deg > 2)
 			{
 				result = result +
-					SH_C3[0] * y * (3.0f * xx - yy) * sh[9] +
-					SH_C3[1] * xy * z * sh[10] +
-					SH_C3[2] * y * (4.0f * zz - xx - yy) * sh[11] +
-					SH_C3[3] * z * (2.0f * zz - 3.0f * xx - 3.0f * yy) * sh[12] +
-					SH_C3[4] * x * (4.0f * zz - xx - yy) * sh[13] +
-					SH_C3[5] * z * (xx - yy) * sh[14] +
-					SH_C3[6] * x * (xx - 3.0f * yy) * sh[15];
+					SH_C3_0 * y * (3.0f * xx - yy) * sh[9] +
+					SH_C3_1 * xy * z * sh[10] +
+					SH_C3_2 * y * (4.0f * zz - xx - yy) * sh[11] +
+					SH_C3_3 * z * (2.0f * zz - 3.0f * xx - 3.0f * yy) * sh[12] +
+					SH_C3_4 * x * (4.0f * zz - xx - yy) * sh[13] +
+					SH_C3_5 * z * (xx - yy) * sh[14] +
+					SH_C3_6 * x * (xx - 3.0f * yy) * sh[15];
 			}
 		}
 	}
