@@ -141,7 +141,9 @@ void computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means
 // Backward version of INVERSE 2D covariance matrix computation
 // (due to length launched as separate kernel before other 
 // backward steps contained in preprocess)
-void computeCov2DCUDA(int P,
+void computeCov2DCUDA(
+	const dim3 block,
+	int P,
 	const float3* means,
 	const int* radii,
 	const float* cov3Ds,
@@ -152,8 +154,9 @@ void computeCov2DCUDA(int P,
 	float3* dL_dmeans,
 	float* dL_dcov)
 {
-	for (auto idx = 0; ; idx++) {
-		if (idx >= P || !(radii[idx] > 0))
+	auto size = min(block.x * block.y * block.z, P);
+	for (uint32_t idx = 0; idx < size; idx++) {
+		if (!(radii[idx] > 0))
 			return;
 
 		// Reading location of 3D covariance for this Gaussian
@@ -346,6 +349,7 @@ void computeCov3D(int idx, const glm::vec3 scale, float mod, const glm::vec4 rot
 // (those are handled by a previous kernel call)
 template<int C>
 void preprocessCUDA(
+	const dim3 block,
 	int P, int D, int M,
 	const float3* means,
 	const int* radii,
@@ -364,8 +368,9 @@ void preprocessCUDA(
 	glm::vec3* dL_dscale,
 	glm::vec4* dL_drot)
 {
-	for (auto idx = 0; ; idx++) {
-		if (idx >= P || !(radii[idx] > 0))
+	auto size = min(block.x * block.y * block.z, P);
+	for (uint32_t idx = 0; idx < size; idx++) {
+		if (!(radii[idx] > 0))
 			return;
 
 		float3 m = means[idx];
@@ -569,6 +574,7 @@ void renderCUDA(
 }
 
 void BACKWARD::preprocess(
+	const dim3 block,
 	int P, int D, int M,
 	const float3* means3D,
 	const int* radii,
@@ -597,6 +603,7 @@ void BACKWARD::preprocess(
 	// "preprocess". When done, loss gradient w.r.t. 3D means has been
 	// modified and gradient w.r.t. 3D covariance matrix has been computed.	
 	computeCov2DCUDA(
+		block,
 		P,
 		means3D,
 		radii,
@@ -614,6 +621,7 @@ void BACKWARD::preprocess(
 	// propagate color gradients to SH (if desireD), propagate 3D covariance
 	// matrix gradients to scale and rotation.
 	preprocessCUDA<NUM_CHANNELS>(
+		block,
 		P, D, M,
 		(float3*)means3D,
 		radii,

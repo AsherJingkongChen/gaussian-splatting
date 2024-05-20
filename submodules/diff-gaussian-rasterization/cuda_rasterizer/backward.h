@@ -20,7 +20,7 @@
 namespace BACKWARD
 {
 	void render(
-		const dim3 grid, dim3 block,
+		const dim3 grid, const dim3 block,
 		const uint2* ranges,
 		const uint32_t* point_list,
 		int W, int H,
@@ -37,6 +37,7 @@ namespace BACKWARD
 		float* dL_dcolors);
 
 	void preprocess(
+		const dim3 block,
 		int P, int D, int M,
 		const float3* means,
 		const int* radii,
