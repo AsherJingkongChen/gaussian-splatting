@@ -262,15 +262,16 @@ int CudaRasterizer::Rasterizer::forward(
 		prefiltered
 	), debug)
 
+	printf(": geomState = %d %d\n", geomState.scan_size, geomState.tiles_touched[0]);
+
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
 	printf("forward %d\n", 6);
 	std::inclusive_scan(geomState.tiles_touched, geomState.tiles_touched + P, geomState.point_offsets);
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
-	int num_rendered;
 	printf("forward %d\n", 7);
-	memcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int));
+	int num_rendered = (int)geomState.point_offsets[P - 1];
 
 	printf("forward %d\n", 8);
 	size_t binning_chunk_size = required<BinningState>(num_rendered);
