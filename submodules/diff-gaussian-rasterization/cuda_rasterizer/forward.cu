@@ -259,79 +259,128 @@ void preprocessCUDA(int P, int D, int M,
 // Main rasterization method. Collaboratively works on one tile per
 // block, each thread treats one pixel. Alternates between fetching 
 // and rasterizing data.
+// Main rasterization method. Collaboratively works on one tile per
+// block, each thread treats one pixel. Alternates between fetching 
+// and rasterizing data.
 template <uint32_t CHANNELS>
 void renderCUDA(
-    const uint2* ranges,
-    const uint32_t* point_list,
-    int W, int H,
-    const float2* points_xy_image,
-    const float* features,
-    const float4* conic_opacity,
-    float* final_T,
-    uint32_t* n_contrib,
-    const float* bg_color,
-    float* out_color)
+	const dim3 grid,
+	const dim3 block,
+	const uint2* __restrict__ ranges,
+	const uint32_t* __restrict__ point_list,
+	int W, int H,
+	const float2* __restrict__ points_xy_image,
+	const float* __restrict__ features,
+	const float4* __restrict__ conic_opacity,
+	float* __restrict__ final_T,
+	uint32_t* __restrict__ n_contrib,
+	const float* __restrict__ bg_color,
+	float* __restrict__ out_color)
 {
-    for (int pix_y = 0; pix_y < H; pix_y++) {
-        for (int pix_x = 0; pix_x < W; pix_x++) {
-            uint2 pix = { pix_x, pix_y };
-            uint32_t pix_id = W * pix_y + pix_x;
-            float2 pixf = { (float)pix_x, (float)pix_y };
+	// Identify current tile and associated min/max pixel range.
 
-            bool inside = pix_x < W && pix_y < H;
-            bool done = !inside;
+	for (uint32_t group_x = 0; group_x < grid.x; group_x++) {
+	for (uint32_t group_y = 0; group_y < grid.y; group_y++) {
+	for (uint32_t thread_x = 0; thread_x < block.x; thread_x++) {
+	for (uint32_t thread_y = 0; thread_y < block.y; thread_y++) {
 
-            uint2 range = ranges[pix_y * (W + BLOCK_X - 1) / BLOCK_X + pix_x / BLOCK_X];
-            int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
-            int toDo = range.y - range.x;
+	uint32_t horizontal_blocks = grid.x;
+	uint2 pix_min = { group_x * BLOCK_X, group_y * BLOCK_Y };
+	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
+	uint2 pix = { pix_min.x + thread_x, pix_min.y + thread_y };
+	uint32_t pix_id = W * pix.y + pix.x;
+	float2 pixf = { (float)pix.x, (float)pix.y };
 
-            float T = 1.0f;
-            uint32_t contributor = 0;
-            uint32_t last_contributor = 0;
-            float C[CHANNELS] = { 0 };
+	// Check if this thread is associated with a valid pixel or outside.
+	bool inside = pix.x < W&& pix.y < H;
+	// Done threads can help with fetching, but don't rasterize
+	bool done = !inside;
 
-            for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE) {
-                int num_done = done ? 1 : 0;
+	// Load start/end range of IDs to process in bit sorted list.
+	uint2 range = ranges[group_y * horizontal_blocks + group_x];
+	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+	int toDo = range.y - range.x;
 
-                if (num_done == 1)
-                    break;
+	// Allocate storage for batches of collectively fetched data.
+	int collected_id[BLOCK_SIZE];
+	float2 collected_xy[BLOCK_SIZE];
+	float4 collected_conic_opacity[BLOCK_SIZE];
 
-                for (int j = 0; j < min(BLOCK_SIZE, toDo); j++) {
-                    int coll_id = point_list[range.x + i * BLOCK_SIZE + j];
-                    float2 xy = points_xy_image[coll_id];
-                    float2 d = { xy.x - pixf.x, xy.y - pixf.y };
-                    float4 con_o = conic_opacity[coll_id];
-                    float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
-                    if (power > 0.0f)
-                        continue;
+	// Initialize helper variables
+	float T = 1.0f;
+	uint32_t contributor = 0;
+	uint32_t last_contributor = 0;
+	float C[CHANNELS] = { 0 };
 
-                    float alpha = min(0.99f, con_o.w * exp(power));
-                    if (alpha < 1.0f / 255.0f)
-                        continue;
-                    float test_T = T * (1 - alpha);
-                    if (test_T < 0.0001f) {
-                        done = true;
-                        continue;
-                    }
+	// Iterate over batches until all done or range is complete
+	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
+	{
+		// Collectively fetch per-Gaussian data from global to shared
+		auto thread_id = thread_y * block.x + thread_x;
+		int progress = i * BLOCK_SIZE + thread_id;
+		if (range.x + progress < range.y)
+		{
+			int coll_id = point_list[range.x + progress];
+			collected_id[thread_id] = coll_id;
+			collected_xy[thread_id] = points_xy_image[coll_id];
+			collected_conic_opacity[thread_id] = conic_opacity[coll_id];
+		}
 
-                    for (int ch = 0; ch < CHANNELS; ch++)
-                        C[ch] += features[coll_id * CHANNELS + ch] * alpha * T;
+		// Iterate over current batch
+		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
+		{
+			// Keep track of current position in range
+			contributor++;
 
-                    T = test_T;
+			// Resample using conic matrix (cf. "Surface 
+			// Splatting" by Zwicker et al., 2001)
+			float2 xy = collected_xy[j];
+			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
+			float4 con_o = collected_conic_opacity[j];
+			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+			if (power > 0.0f)
+				continue;
 
-                    last_contributor = contributor;
-                }
-                contributor += min(BLOCK_SIZE, toDo);
-            }
+			// Eq. (2) from 3D Gaussian splatting paper.
+			// Obtain alpha by multiplying with Gaussian opacity
+			// and its exponential falloff from mean.
+			// Avoid numerical instabilities (see paper appendix). 
+			float alpha = min(0.99f, con_o.w * exp(power));
+			if (alpha < 1.0f / 255.0f)
+				continue;
+			float test_T = T * (1 - alpha);
+			if (test_T < 0.0001f)
+			{
+				done = true;
+				continue;
+			}
 
-            if (inside) {
-                final_T[pix_id] = T;
-                n_contrib[pix_id] = last_contributor;
-                for (int ch = 0; ch < CHANNELS; ch++)
-                    out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
-            }
-        }
-    }
+			// Eq. (3) from 3D Gaussian splatting paper.
+			for (int ch = 0; ch < CHANNELS; ch++)
+				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
+
+			T = test_T;
+
+			// Keep track of last range entry to update this
+			// pixel.
+			last_contributor = contributor;
+		}
+	}
+
+	// All threads that treat valid pixel write out their final
+	// rendering data to the frame and auxiliary buffers.
+	if (inside)
+	{
+		final_T[pix_id] = T;
+		n_contrib[pix_id] = last_contributor;
+		for (int ch = 0; ch < CHANNELS; ch++)
+			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+	}
+
+	}
+	}
+	}
+	}
 }
 
 void FORWARD::render(
@@ -348,6 +397,8 @@ void FORWARD::render(
 	float* out_color)
 {
 	renderCUDA<NUM_CHANNELS>(
+		grid,
+		block,
 		ranges,
 		point_list,
 		W, H,

@@ -400,108 +400,172 @@ void preprocessCUDA(
 // Backward version of the rendering procedure.
 template <uint32_t C>
 void renderCUDA(
-    const uint2* ranges,
-    const uint32_t* point_list,
-    int W, int H,
-    const float* bg_color,
-    const float2* points_xy_image,
-    const float4* conic_opacity,
-    const float* colors,
-    const float* final_Ts,
-    const uint32_t* n_contrib,
-    const float* dL_dpixels,
-    float3* dL_dmean2D,
-    float4* dL_dconic2D,
-    float* dL_dopacity,
-    float* dL_dcolors)
+	const dim3 grid,
+	const dim3 block,
+	const uint2* __restrict__ ranges,
+	const uint32_t* __restrict__ point_list,
+	int W, int H,
+	const float* __restrict__ bg_color,
+	const float2* __restrict__ points_xy_image,
+	const float4* __restrict__ conic_opacity,
+	const float* __restrict__ colors,
+	const float* __restrict__ final_Ts,
+	const uint32_t* __restrict__ n_contrib,
+	const float* __restrict__ dL_dpixels,
+	float3* __restrict__ dL_dmean2D,
+	float4* __restrict__ dL_dconic2D,
+	float* __restrict__ dL_dopacity,
+	float* __restrict__ dL_dcolors)
 {
-    for (int pix_y = 0; pix_y < H; pix_y++) {
-        for (int pix_x = 0; pix_x < W; pix_x++) {
-            uint2 pix = { pix_x, pix_y };
-            uint32_t pix_id = W * pix_y + pix_x;
-            float2 pixf = { (float)pix_x, (float)pix_y };
+	// We rasterize again. Compute necessary block info.
 
-            bool inside = pix_x < W && pix_y < H;
-            uint2 range = ranges[pix_y * (W + BLOCK_X - 1) / BLOCK_X + pix_x / BLOCK_X];
+	for (uint32_t group_x = 0; group_x < grid.x; group_x++) {
+	for (uint32_t group_y = 0; group_y < grid.y; group_y++) {
+	for (uint32_t thread_x = 0; thread_x < block.x; thread_x++) {
+	for (uint32_t thread_y = 0; thread_y < block.y; thread_y++) {
 
-            int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
-            int toDo = range.y - range.x;
+	const uint32_t horizontal_blocks = grid.x;
+	const uint2 pix_min = { group_x * BLOCK_X, group_y * BLOCK_Y };
+	const uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
+	const uint2 pix = { pix_min.x + thread_x, pix_min.y + thread_y };
+	const uint32_t pix_id = W * pix.y + pix.x;
+	const float2 pixf = { (float)pix.x, (float)pix.y };
 
-            bool done = !inside;
-            float T = inside ? final_Ts[pix_id] : 0;
-            uint32_t contributor = toDo;
-            int last_contributor = inside ? n_contrib[pix_id] : 0;
+	const bool inside = pix.x < W&& pix.y < H;
+	const uint2 range = ranges[group_y * horizontal_blocks + group_x];
 
-            float accum_rec[C] = { 0 };
-            float dL_dpixel[C];
-            if (inside)
-                for (int i = 0; i < C; i++)
-                    dL_dpixel[i] = dL_dpixels[i * H * W + pix_id];
+	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
 
-            float last_alpha = 0;
-            float last_color[C] = { 0 };
+	bool done = !inside;
+	int toDo = range.y - range.x;
 
-            float ddelx_dx = 0.5 * W;
-            float ddely_dy = 0.5 * H;
+	int collected_id[BLOCK_SIZE];
+	float2 collected_xy[BLOCK_SIZE];
+	float4 collected_conic_opacity[BLOCK_SIZE];
+	float collected_colors[C * BLOCK_SIZE];
 
-            for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE) {
-                for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++) {
-                    contributor--;
-                    if (contributor >= last_contributor)
-                        continue;
+	// In the forward, we stored the final value for T, the
+	// product of all (1 - alpha) factors. 
+	const float T_final = inside ? final_Ts[pix_id] : 0;
+	float T = T_final;
 
-                    int coll_id = point_list[range.y - i * BLOCK_SIZE - j - 1];
-                    float2 xy = points_xy_image[coll_id];
-                    float2 d = { xy.x - pixf.x, xy.y - pixf.y };
-                    float4 con_o = conic_opacity[coll_id];
-                    float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
-                    if (power > 0.0f)
-                        continue;
+	// We start from the back. The ID of the last contributing
+	// Gaussian is known from each pixel from the forward.
+	uint32_t contributor = toDo;
+	const int last_contributor = inside ? n_contrib[pix_id] : 0;
 
-                    float G = exp(power);
-                    float alpha = min(0.99f, con_o.w * G);
-                    if (alpha < 1.0f / 255.0f)
-                        continue;
+	float accum_rec[C] = { 0 };
+	float dL_dpixel[C];
+	if (inside)
+		for (int i = 0; i < C; i++)
+			dL_dpixel[i] = dL_dpixels[i * H * W + pix_id];
 
-                    T = T / (1.f - alpha);
-                    float dchannel_dcolor = alpha * T;
+	float last_alpha = 0;
+	float last_color[C] = { 0 };
 
-                    float dL_dalpha = 0.0f;
-                    for (int ch = 0; ch < C; ch++) {
-                        float c = colors[coll_id * C + ch];
-                        accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
-                        last_color[ch] = c;
+	// Gradient of pixel coordinate w.r.t. normalized 
+	// screen-space viewport corrdinates (-1 to 1)
+	const float ddelx_dx = 0.5 * W;
+	const float ddely_dy = 0.5 * H;
 
-                        float dL_dchannel = dL_dpixel[ch];
-                        dL_dalpha += (c - accum_rec[ch]) * dL_dchannel;
-                        dL_dcolors[coll_id * C + ch] += dchannel_dcolor * dL_dchannel;
-                    }
-                    dL_dalpha *= T;
-                    last_alpha = alpha;
+	// Traverse all Gaussians
+	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
+	{
+		// Load auxiliary data into shared memory, start in the BACK
+		// and load them in revers order.
+		auto thread_id = thread_y * block.x + thread_x;
+		const int progress = i * BLOCK_SIZE + thread_id;
+		if (range.x + progress < range.y)
+		{
+			const int coll_id = point_list[range.y - progress - 1];
+			collected_id[thread_id] = coll_id;
+			collected_xy[thread_id] = points_xy_image[coll_id];
+			collected_conic_opacity[thread_id] = conic_opacity[coll_id];
+			for (int i = 0; i < C; i++)
+				collected_colors[i * BLOCK_SIZE + thread_id] = colors[coll_id * C + i];
+		}
 
-                    float bg_dot_dpixel = 0;
-                    for (int i = 0; i < C; i++)
-                        bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
-                    dL_dalpha += (-T / (1.f - alpha)) * bg_dot_dpixel;
+		// Iterate over Gaussians
+		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
+		{
+			// Keep track of current Gaussian ID. Skip, if this one
+			// is behind the last contributor for this pixel.
+			contributor--;
+			if (contributor >= last_contributor)
+				continue;
 
-                    float dL_dG = con_o.w * dL_dalpha;
-                    float gdx = G * d.x;
-                    float gdy = G * d.y;
-                    float dG_ddelx = -gdx * con_o.x - gdy * con_o.y;
-                    float dG_ddely = -gdy * con_o.z - gdx * con_o.y;
+			// Compute blending values, as before.
+			const float2 xy = collected_xy[j];
+			const float2 d = { xy.x - pixf.x, xy.y - pixf.y };
+			const float4 con_o = collected_conic_opacity[j];
+			const float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+			if (power > 0.0f)
+				continue;
 
-                    dL_dmean2D[coll_id].x += dL_dG * dG_ddelx * ddelx_dx;
-                    dL_dmean2D[coll_id].y += dL_dG * dG_ddely * ddely_dy;
+			const float G = exp(power);
+			const float alpha = min(0.99f, con_o.w * G);
+			if (alpha < 1.0f / 255.0f)
+				continue;
 
-                    dL_dconic2D[coll_id].x -= 0.5f * gdx * d.x * dL_dG;
-                    dL_dconic2D[coll_id].y -= 0.5f * gdx * d.y * dL_dG;
-                    dL_dconic2D[coll_id].w -= 0.5f * gdy * d.y * dL_dG;
+			T = T / (1.f - alpha);
+			const float dchannel_dcolor = alpha * T;
 
-                    dL_dopacity[coll_id] += G * dL_dalpha;
-                }
-            }
-        }
-    }
+			// Propagate gradients to per-Gaussian colors and keep
+			// gradients w.r.t. alpha (blending factor for a Gaussian/pixel
+			// pair).
+			float dL_dalpha = 0.0f;
+			const int global_id = collected_id[j];
+			for (int ch = 0; ch < C; ch++)
+			{
+				const float c = collected_colors[ch * BLOCK_SIZE + j];
+				// Update last color (to be used in the next iteration)
+				accum_rec[ch] = last_alpha * last_color[ch] + (1.f - last_alpha) * accum_rec[ch];
+				last_color[ch] = c;
+
+				const float dL_dchannel = dL_dpixel[ch];
+				dL_dalpha += (c - accum_rec[ch]) * dL_dchannel;
+				// Update the gradients w.r.t. color of the Gaussian. 
+				// Atomic, since this pixel is just one of potentially
+				// many that were affected by this Gaussian.
+				dL_dcolors[global_id * C + ch] += dchannel_dcolor * dL_dchannel;
+			}
+			dL_dalpha *= T;
+			// Update last alpha (to be used in the next iteration)
+			last_alpha = alpha;
+
+			// Account for fact that alpha also influences how much of
+			// the background color is added if nothing left to blend
+			float bg_dot_dpixel = 0;
+			for (int i = 0; i < C; i++)
+				bg_dot_dpixel += bg_color[i] * dL_dpixel[i];
+			dL_dalpha += (-T_final / (1.f - alpha)) * bg_dot_dpixel;
+
+
+			// Helpful reusable temporary variables
+			const float dL_dG = con_o.w * dL_dalpha;
+			const float gdx = G * d.x;
+			const float gdy = G * d.y;
+			const float dG_ddelx = -gdx * con_o.x - gdy * con_o.y;
+			const float dG_ddely = -gdy * con_o.z - gdx * con_o.y;
+
+			// Update gradients w.r.t. 2D mean position of the Gaussian
+			dL_dmean2D[global_id].x += dL_dG * dG_ddelx * ddelx_dx;
+			dL_dmean2D[global_id].y += dL_dG * dG_ddely * ddely_dy;
+
+			// Update gradients w.r.t. 2D covariance (2x2 matrix, symmetric)
+			dL_dconic2D[global_id].x -= 0.5f * gdx * d.x * dL_dG;
+			dL_dconic2D[global_id].y -= 0.5f * gdx * d.y * dL_dG;
+			dL_dconic2D[global_id].w -= 0.5f * gdy * d.y * dL_dG;
+
+			// Update gradients w.r.t. opacity of the Gaussian
+			dL_dopacity[global_id] += G * dL_dalpha;
+		}
+	}
+
+	}
+	}
+	}
+	}
 }
 
 void BACKWARD::preprocess(
@@ -587,6 +651,8 @@ void BACKWARD::render(
 	float* dL_dcolors)
 {
 	renderCUDA<NUM_CHANNELS>(
+		grid,
+		block,
 		ranges,
 		point_list,
 		W, H,
