@@ -19,7 +19,6 @@
 #include "device_launch_parameters.h"
 #include <cub/cub.cuh>
 #include <cub/device/device_radix_sort.cuh>
-#define GLM_FORCE_CUDA
 #include <glm/glm.hpp>
 
 #include <cooperative_groups.h>
@@ -51,7 +50,7 @@ uint32_t getHigherMsb(uint32_t n)
 
 // Generates one key/value pair for all Gaussian / tile overlaps. 
 // Run once per Gaussian (1:N mapping).
-__global__ void duplicateWithKeys(
+void duplicateWithKeys(
 	int P,
 	const float2* points_xy,
 	const float* depths,
@@ -61,34 +60,35 @@ __global__ void duplicateWithKeys(
 	int* radii,
 	dim3 grid)
 {
-	auto idx = cg::this_grid().thread_rank();
-	if (idx >= P)
-		return;
+	for (auto idx = 0; ; idx++) {
+		if (idx >= P)
+			return;
 
-	// Generate no key/value pair for invisible Gaussians
-	if (radii[idx] > 0)
-	{
-		// Find this Gaussian's offset in buffer for writing keys/values.
-		uint32_t off = (idx == 0) ? 0 : offsets[idx - 1];
-		uint2 rect_min, rect_max;
-
-		getRect(points_xy[idx], radii[idx], rect_min, rect_max, grid);
-
-		// For each tile that the bounding rect overlaps, emit a 
-		// key/value pair. The key is |  tile ID  |      depth      |,
-		// and the value is the ID of the Gaussian. Sorting the values 
-		// with this key yields Gaussian IDs in a list, such that they
-		// are first sorted by tile and then by depth. 
-		for (int y = rect_min.y; y < rect_max.y; y++)
+		// Generate no key/value pair for invisible Gaussians
+		if (radii[idx] > 0)
 		{
-			for (int x = rect_min.x; x < rect_max.x; x++)
+			// Find this Gaussian's offset in buffer for writing keys/values.
+			uint32_t off = (idx == 0) ? 0 : offsets[idx - 1];
+			uint2 rect_min, rect_max;
+
+			getRect(points_xy[idx], radii[idx], rect_min, rect_max, grid);
+
+			// For each tile that the bounding rect overlaps, emit a 
+			// key/value pair. The key is |  tile ID  |      depth      |,
+			// and the value is the ID of the Gaussian. Sorting the values 
+			// with this key yields Gaussian IDs in a list, such that they
+			// are first sorted by tile and then by depth. 
+			for (int y = rect_min.y; y < rect_max.y; y++)
 			{
-				uint64_t key = y * grid.x + x;
-				key <<= 32;
-				key |= *((uint32_t*)&depths[idx]);
-				gaussian_keys_unsorted[off] = key;
-				gaussian_values_unsorted[off] = idx;
-				off++;
+				for (int x = rect_min.x; x < rect_max.x; x++)
+				{
+					uint64_t key = y * grid.x + x;
+					key <<= 32;
+					key |= *((uint32_t*)&depths[idx]);
+					gaussian_keys_unsorted[off] = key;
+					gaussian_values_unsorted[off] = idx;
+					off++;
+				}
 			}
 		}
 	}
@@ -97,28 +97,29 @@ __global__ void duplicateWithKeys(
 // Check keys to see if it is at the start/end of one tile's range in 
 // the full sorted list. If yes, write start/end of this tile. 
 // Run once per instanced (duplicated) Gaussian ID.
-__global__ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges)
+void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges)
 {
-	auto idx = cg::this_grid().thread_rank();
-	if (idx >= L)
-		return;
+	for (auto idx = 0; ; idx++) {
+		if (idx >= L)
+			return;
 
-	// Read tile ID from key. Update start/end of tile range if at limit.
-	uint64_t key = point_list_keys[idx];
-	uint32_t currtile = key >> 32;
-	if (idx == 0)
-		ranges[currtile].x = 0;
-	else
-	{
-		uint32_t prevtile = point_list_keys[idx - 1] >> 32;
-		if (currtile != prevtile)
+		// Read tile ID from key. Update start/end of tile range if at limit.
+		uint64_t key = point_list_keys[idx];
+		uint32_t currtile = key >> 32;
+		if (idx == 0)
+			ranges[currtile].x = 0;
+		else
 		{
-			ranges[prevtile].y = idx;
-			ranges[currtile].x = idx;
+			uint32_t prevtile = point_list_keys[idx - 1] >> 32;
+			if (currtile != prevtile)
+			{
+				ranges[prevtile].y = idx;
+				ranges[currtile].x = idx;
+			}
 		}
+		if (idx == L - 1)
+			ranges[currtile].y = L;
 	}
-	if (idx == L - 1)
-		ranges[currtile].y = L;
 }
 
 CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& chunk, size_t P)
@@ -154,6 +155,7 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 	obtain(chunk, binning.point_list_unsorted, P, 128);
 	obtain(chunk, binning.point_list_keys, P, 128);
 	obtain(chunk, binning.point_list_keys_unsorted, P, 128);
+	assert(false);
 	cub::DeviceRadixSort::SortPairs(
 		nullptr, binning.sorting_size,
 		binning.point_list_keys_unsorted, binning.point_list_keys,
@@ -243,11 +245,14 @@ int CudaRasterizer::Rasterizer::forward(
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
-	CHECK_CUDA(cub::DeviceScan::InclusiveSum(geomState.scanning_space, geomState.scan_size, geomState.tiles_touched, geomState.point_offsets, P), debug)
+	uint32_t acc = 0;
+	for (auto i = 0; i < P; i++) {
+		acc += (geomState.point_offsets[i] = acc + geomState.tiles_touched[i]);
+	}
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
 	int num_rendered;
-	CHECK_CUDA(cudaMemcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int), cudaMemcpyDeviceToHost), debug);
+	memcpy(&num_rendered, geomState.point_offsets + P - 1, sizeof(int));
 
 	size_t binning_chunk_size = required<BinningState>(num_rendered);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);
@@ -255,7 +260,7 @@ int CudaRasterizer::Rasterizer::forward(
 
 	// For each instance to be rendered, produce adequate [ tile | depth ] key 
 	// and corresponding dublicated Gaussian indices to be sorted
-	duplicateWithKeys << <(P + 255) / 256, 256 >> > (
+	duplicateWithKeys(
 		P,
 		geomState.means2D,
 		geomState.depths,
@@ -263,12 +268,13 @@ int CudaRasterizer::Rasterizer::forward(
 		binningState.point_list_keys_unsorted,
 		binningState.point_list_unsorted,
 		radii,
-		tile_grid)
+		tile_grid);
 	CHECK_CUDA(, debug)
 
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
+	assert(false);
 	CHECK_CUDA(cub::DeviceRadixSort::SortPairs(
 		binningState.list_sorting_space,
 		binningState.sorting_size,
@@ -276,11 +282,11 @@ int CudaRasterizer::Rasterizer::forward(
 		binningState.point_list_unsorted, binningState.point_list,
 		num_rendered, 0, 32 + bit), debug)
 
-	CHECK_CUDA(cudaMemset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2)), debug);
+	memset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
 	// Identify start and end of per-tile workloads in sorted list
 	if (num_rendered > 0)
-		identifyTileRanges << <(num_rendered + 255) / 256, 256 >> > (
+		identifyTileRanges(
 			num_rendered,
 			binningState.point_list_keys,
 			imgState.ranges);

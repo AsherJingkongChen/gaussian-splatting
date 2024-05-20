@@ -34,12 +34,12 @@
 #define SH_C3_5 1.445305721320277f
 #define SH_C3_6 -0.5900435899266435f
 
-__forceinline__ __device__ float ndc2Pix(float v, int S)
+__forceinline__ float ndc2Pix(float v, int S)
 {
 	return ((v + 1.0) * S - 1.0) * 0.5;
 }
 
-__forceinline__ __device__ void getRect(const float2 p, int max_radius, uint2& rect_min, uint2& rect_max, dim3 grid)
+__forceinline__ void getRect(const float2 p, int max_radius, uint2& rect_min, uint2& rect_max, dim3 grid)
 {
 	rect_min = {
 		min(grid.x, max((int)0, (int)((p.x - max_radius) / BLOCK_X))),
@@ -51,7 +51,7 @@ __forceinline__ __device__ void getRect(const float2 p, int max_radius, uint2& r
 	};
 }
 
-__forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float* matrix)
+__forceinline__ float3 transformPoint4x3(const float3& p, const float* matrix)
 {
 	float3 transformed = {
 		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z + matrix[12],
@@ -61,7 +61,7 @@ __forceinline__ __device__ float3 transformPoint4x3(const float3& p, const float
 	return transformed;
 }
 
-__forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float* matrix)
+__forceinline__ float4 transformPoint4x4(const float3& p, const float* matrix)
 {
 	float4 transformed = {
 		matrix[0] * p.x + matrix[4] * p.y + matrix[8] * p.z + matrix[12],
@@ -72,7 +72,7 @@ __forceinline__ __device__ float4 transformPoint4x4(const float3& p, const float
 	return transformed;
 }
 
-__forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, const float* matrix)
+__forceinline__ float3 transformVec4x3Transpose(const float3& p, const float* matrix)
 {
 	float3 transformed = {
 		matrix[0] * p.x + matrix[1] * p.y + matrix[2] * p.z,
@@ -82,7 +82,7 @@ __forceinline__ __device__ float3 transformVec4x3Transpose(const float3& p, cons
 	return transformed;
 }
 
-__forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
+__forceinline__ float3 dnormvdv(float3 v, float3 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z;
 	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
@@ -94,7 +94,7 @@ __forceinline__ __device__ float3 dnormvdv(float3 v, float3 dv)
 	return dnormvdv;
 }
 
-__forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
+__forceinline__ float4 dnormvdv(float4 v, float4 dv)
 {
 	float sum2 = v.x * v.x + v.y * v.y + v.z * v.z + v.w * v.w;
 	float invsum32 = 1.0f / sqrt(sum2 * sum2 * sum2);
@@ -109,7 +109,7 @@ __forceinline__ __device__ float4 dnormvdv(float4 v, float4 dv)
 	return dnormvdv;
 }
 
-__forceinline__ __device__ bool in_frustum(int idx,
+__forceinline__ bool in_frustum(int idx,
 	const float* orig_points,
 	const float* viewmatrix,
 	const float* projmatrix,
@@ -129,7 +129,7 @@ __forceinline__ __device__ bool in_frustum(int idx,
 		if (prefiltered)
 		{
 			printf("Point is filtered although prefiltered is set. This shouldn't happen!");
-			__trap();
+			// __trap();
 		}
 		return false;
 	}
@@ -137,12 +137,6 @@ __forceinline__ __device__ bool in_frustum(int idx,
 }
 
 #define CHECK_CUDA(A, debug) \
-A; if(debug) { \
-auto ret = cudaDeviceSynchronize(); \
-if (ret != cudaSuccess) { \
-std::cerr << "\n[CUDA ERROR] in " << __FILE__ << "\nLine " << __LINE__ << ": " << cudaGetErrorString(ret); \
-throw std::runtime_error(cudaGetErrorString(ret)); \
-} \
-}
+A;
 
 #endif

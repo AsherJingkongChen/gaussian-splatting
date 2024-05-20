@@ -17,7 +17,7 @@ namespace cg = cooperative_groups;
 
 // Forward method for converting the input spherical harmonics
 // coefficients of each Gaussian to a simple RGB color.
-__device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, bool* clamped)
+glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const glm::vec3* means, glm::vec3 campos, const float* shs, bool* clamped)
 {
 	// The implementation is loosely based on code for 
 	// "Differentiable Point-Based Radiance Fields for 
@@ -71,7 +71,7 @@ __device__ glm::vec3 computeColorFromSH(int idx, int deg, int max_coeffs, const 
 }
 
 // Forward version of 2D covariance matrix computation
-__device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, const float* viewmatrix)
+float3 computeCov2D(const float3& mean, float focal_x, float focal_y, float tan_fovx, float tan_fovy, const float* cov3D, const float* viewmatrix)
 {
 	// The following models the steps outlined by equations 29
 	// and 31 in "EWA Splatting" (Zwicker et al., 2002). 
@@ -115,7 +115,7 @@ __device__ float3 computeCov2D(const float3& mean, float focal_x, float focal_y,
 // Forward method for converting scale and rotation properties of each
 // Gaussian to a 3D covariance matrix in world space. Also takes care
 // of quaternion normalization.
-__device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 rot, float* cov3D)
+void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 rot, float* cov3D)
 {
 	// Create scaling matrix
 	glm::mat3 S = glm::mat3(1.0f);
@@ -153,7 +153,7 @@ __device__ void computeCov3D(const glm::vec3 scale, float mod, const glm::vec4 r
 
 // Perform initial steps for each Gaussian prior to rasterization.
 template<int C>
-__global__ void preprocessCUDA(int P, int D, int M,
+void preprocessCUDA(int P, int D, int M,
 	const float* orig_points,
 	const glm::vec3* scales,
 	const float scale_modifier,
@@ -179,198 +179,159 @@ __global__ void preprocessCUDA(int P, int D, int M,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	auto idx = cg::this_grid().thread_rank();
-	if (idx >= P)
-		return;
+	for (auto idx = 0; ; idx++) {
+		if (idx >= P)
+			return;
 
-	// Initialize radius and touched tiles to 0. If this isn't changed,
-	// this Gaussian will not be processed further.
-	radii[idx] = 0;
-	tiles_touched[idx] = 0;
+		// Initialize radius and touched tiles to 0. If this isn't changed,
+		// this Gaussian will not be processed further.
+		radii[idx] = 0;
+		tiles_touched[idx] = 0;
 
-	// Perform near culling, quit if outside.
-	float3 p_view;
-	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
-		return;
+		// Perform near culling, quit if outside.
+		float3 p_view;
+		if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
+			return;
 
-	// Transform point by projecting
-	float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
-	float4 p_hom = transformPoint4x4(p_orig, projmatrix);
-	float p_w = 1.0f / (p_hom.w + 0.0000001f);
-	float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
+		// Transform point by projecting
+		float3 p_orig = { orig_points[3 * idx], orig_points[3 * idx + 1], orig_points[3 * idx + 2] };
+		float4 p_hom = transformPoint4x4(p_orig, projmatrix);
+		float p_w = 1.0f / (p_hom.w + 0.0000001f);
+		float3 p_proj = { p_hom.x * p_w, p_hom.y * p_w, p_hom.z * p_w };
 
-	// If 3D covariance matrix is precomputed, use it, otherwise compute
-	// from scaling and rotation parameters. 
-	const float* cov3D;
-	if (cov3D_precomp != nullptr)
-	{
-		cov3D = cov3D_precomp + idx * 6;
+		// If 3D covariance matrix is precomputed, use it, otherwise compute
+		// from scaling and rotation parameters. 
+		const float* cov3D;
+		if (cov3D_precomp != nullptr)
+		{
+			cov3D = cov3D_precomp + idx * 6;
+		}
+		else
+		{
+			computeCov3D(scales[idx], scale_modifier, rotations[idx], cov3Ds + idx * 6);
+			cov3D = cov3Ds + idx * 6;
+		}
+
+		// Compute 2D screen-space covariance matrix
+		float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
+
+		// Invert covariance (EWA algorithm)
+		float det = (cov.x * cov.z - cov.y * cov.y);
+		if (det == 0.0f)
+			return;
+		float det_inv = 1.f / det;
+		float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
+
+		// Compute extent in screen space (by finding eigenvalues of
+		// 2D covariance matrix). Use extent to compute a bounding rectangle
+		// of screen-space tiles that this Gaussian overlaps with. Quit if
+		// rectangle covers 0 tiles. 
+		float mid = 0.5f * (cov.x + cov.z);
+		float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
+		float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
+		float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
+		float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
+		uint2 rect_min, rect_max;
+		getRect(point_image, my_radius, rect_min, rect_max, grid);
+		if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
+			return;
+
+		// If colors have been precomputed, use them, otherwise convert
+		// spherical harmonics coefficients to RGB color.
+		if (colors_precomp == nullptr)
+		{
+			glm::vec3 result = computeColorFromSH(idx, D, M, (glm::vec3*)orig_points, *cam_pos, shs, clamped);
+			rgb[idx * C + 0] = result.x;
+			rgb[idx * C + 1] = result.y;
+			rgb[idx * C + 2] = result.z;
+		}
+
+		// Store some useful helper data for the next steps.
+		depths[idx] = p_view.z;
+		radii[idx] = my_radius;
+		points_xy_image[idx] = point_image;
+		// Inverse 2D covariance and opacity neatly pack into one float4
+		conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] };
+		tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x);
 	}
-	else
-	{
-		computeCov3D(scales[idx], scale_modifier, rotations[idx], cov3Ds + idx * 6);
-		cov3D = cov3Ds + idx * 6;
-	}
-
-	// Compute 2D screen-space covariance matrix
-	float3 cov = computeCov2D(p_orig, focal_x, focal_y, tan_fovx, tan_fovy, cov3D, viewmatrix);
-
-	// Invert covariance (EWA algorithm)
-	float det = (cov.x * cov.z - cov.y * cov.y);
-	if (det == 0.0f)
-		return;
-	float det_inv = 1.f / det;
-	float3 conic = { cov.z * det_inv, -cov.y * det_inv, cov.x * det_inv };
-
-	// Compute extent in screen space (by finding eigenvalues of
-	// 2D covariance matrix). Use extent to compute a bounding rectangle
-	// of screen-space tiles that this Gaussian overlaps with. Quit if
-	// rectangle covers 0 tiles. 
-	float mid = 0.5f * (cov.x + cov.z);
-	float lambda1 = mid + sqrt(max(0.1f, mid * mid - det));
-	float lambda2 = mid - sqrt(max(0.1f, mid * mid - det));
-	float my_radius = ceil(3.f * sqrt(max(lambda1, lambda2)));
-	float2 point_image = { ndc2Pix(p_proj.x, W), ndc2Pix(p_proj.y, H) };
-	uint2 rect_min, rect_max;
-	getRect(point_image, my_radius, rect_min, rect_max, grid);
-	if ((rect_max.x - rect_min.x) * (rect_max.y - rect_min.y) == 0)
-		return;
-
-	// If colors have been precomputed, use them, otherwise convert
-	// spherical harmonics coefficients to RGB color.
-	if (colors_precomp == nullptr)
-	{
-		glm::vec3 result = computeColorFromSH(idx, D, M, (glm::vec3*)orig_points, *cam_pos, shs, clamped);
-		rgb[idx * C + 0] = result.x;
-		rgb[idx * C + 1] = result.y;
-		rgb[idx * C + 2] = result.z;
-	}
-
-	// Store some useful helper data for the next steps.
-	depths[idx] = p_view.z;
-	radii[idx] = my_radius;
-	points_xy_image[idx] = point_image;
-	// Inverse 2D covariance and opacity neatly pack into one float4
-	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] };
-	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x);
 }
 
 // Main rasterization method. Collaboratively works on one tile per
 // block, each thread treats one pixel. Alternates between fetching 
 // and rasterizing data.
 template <uint32_t CHANNELS>
-__global__ void __launch_bounds__(BLOCK_X * BLOCK_Y)
-renderCUDA(
-	const uint2* __restrict__ ranges,
-	const uint32_t* __restrict__ point_list,
-	int W, int H,
-	const float2* __restrict__ points_xy_image,
-	const float* __restrict__ features,
-	const float4* __restrict__ conic_opacity,
-	float* __restrict__ final_T,
-	uint32_t* __restrict__ n_contrib,
-	const float* __restrict__ bg_color,
-	float* __restrict__ out_color)
+void renderCUDA(
+    const uint2* ranges,
+    const uint32_t* point_list,
+    int W, int H,
+    const float2* points_xy_image,
+    const float* features,
+    const float4* conic_opacity,
+    float* final_T,
+    uint32_t* n_contrib,
+    const float* bg_color,
+    float* out_color)
 {
-	// Identify current tile and associated min/max pixel range.
-	auto block = cg::this_thread_block();
-	uint32_t horizontal_blocks = (W + BLOCK_X - 1) / BLOCK_X;
-	uint2 pix_min = { block.group_index().x * BLOCK_X, block.group_index().y * BLOCK_Y };
-	uint2 pix_max = { min(pix_min.x + BLOCK_X, W), min(pix_min.y + BLOCK_Y , H) };
-	uint2 pix = { pix_min.x + block.thread_index().x, pix_min.y + block.thread_index().y };
-	uint32_t pix_id = W * pix.y + pix.x;
-	float2 pixf = { (float)pix.x, (float)pix.y };
+    for (int pix_y = 0; pix_y < H; pix_y++) {
+        for (int pix_x = 0; pix_x < W; pix_x++) {
+            uint2 pix = { pix_x, pix_y };
+            uint32_t pix_id = W * pix_y + pix_x;
+            float2 pixf = { (float)pix_x, (float)pix_y };
 
-	// Check if this thread is associated with a valid pixel or outside.
-	bool inside = pix.x < W&& pix.y < H;
-	// Done threads can help with fetching, but don't rasterize
-	bool done = !inside;
+            bool inside = pix_x < W && pix_y < H;
+            bool done = !inside;
 
-	// Load start/end range of IDs to process in bit sorted list.
-	uint2 range = ranges[block.group_index().y * horizontal_blocks + block.group_index().x];
-	const int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
-	int toDo = range.y - range.x;
+            uint2 range = ranges[pix_y * (W + BLOCK_X - 1) / BLOCK_X + pix_x / BLOCK_X];
+            int rounds = ((range.y - range.x + BLOCK_SIZE - 1) / BLOCK_SIZE);
+            int toDo = range.y - range.x;
 
-	// Allocate storage for batches of collectively fetched data.
-	__shared__ int collected_id[BLOCK_SIZE];
-	__shared__ float2 collected_xy[BLOCK_SIZE];
-	__shared__ float4 collected_conic_opacity[BLOCK_SIZE];
+            float T = 1.0f;
+            uint32_t contributor = 0;
+            uint32_t last_contributor = 0;
+            float C[CHANNELS] = { 0 };
 
-	// Initialize helper variables
-	float T = 1.0f;
-	uint32_t contributor = 0;
-	uint32_t last_contributor = 0;
-	float C[CHANNELS] = { 0 };
+            for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE) {
+                int num_done = done ? 1 : 0;
 
-	// Iterate over batches until all done or range is complete
-	for (int i = 0; i < rounds; i++, toDo -= BLOCK_SIZE)
-	{
-		// End if entire block votes that it is done rasterizing
-		int num_done = __syncthreads_count(done);
-		if (num_done == BLOCK_SIZE)
-			break;
+                if (num_done == 1)
+                    break;
 
-		// Collectively fetch per-Gaussian data from global to shared
-		int progress = i * BLOCK_SIZE + block.thread_rank();
-		if (range.x + progress < range.y)
-		{
-			int coll_id = point_list[range.x + progress];
-			collected_id[block.thread_rank()] = coll_id;
-			collected_xy[block.thread_rank()] = points_xy_image[coll_id];
-			collected_conic_opacity[block.thread_rank()] = conic_opacity[coll_id];
-		}
-		block.sync();
+                for (int j = 0; j < min(BLOCK_SIZE, toDo); j++) {
+                    int coll_id = point_list[range.x + i * BLOCK_SIZE + j];
+                    float2 xy = points_xy_image[coll_id];
+                    float2 d = { xy.x - pixf.x, xy.y - pixf.y };
+                    float4 con_o = conic_opacity[coll_id];
+                    float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
+                    if (power > 0.0f)
+                        continue;
 
-		// Iterate over current batch
-		for (int j = 0; !done && j < min(BLOCK_SIZE, toDo); j++)
-		{
-			// Keep track of current position in range
-			contributor++;
+                    float alpha = min(0.99f, con_o.w * exp(power));
+                    if (alpha < 1.0f / 255.0f)
+                        continue;
+                    float test_T = T * (1 - alpha);
+                    if (test_T < 0.0001f) {
+                        done = true;
+                        continue;
+                    }
 
-			// Resample using conic matrix (cf. "Surface 
-			// Splatting" by Zwicker et al., 2001)
-			float2 xy = collected_xy[j];
-			float2 d = { xy.x - pixf.x, xy.y - pixf.y };
-			float4 con_o = collected_conic_opacity[j];
-			float power = -0.5f * (con_o.x * d.x * d.x + con_o.z * d.y * d.y) - con_o.y * d.x * d.y;
-			if (power > 0.0f)
-				continue;
+                    for (int ch = 0; ch < CHANNELS; ch++)
+                        C[ch] += features[coll_id * CHANNELS + ch] * alpha * T;
 
-			// Eq. (2) from 3D Gaussian splatting paper.
-			// Obtain alpha by multiplying with Gaussian opacity
-			// and its exponential falloff from mean.
-			// Avoid numerical instabilities (see paper appendix). 
-			float alpha = min(0.99f, con_o.w * exp(power));
-			if (alpha < 1.0f / 255.0f)
-				continue;
-			float test_T = T * (1 - alpha);
-			if (test_T < 0.0001f)
-			{
-				done = true;
-				continue;
-			}
+                    T = test_T;
 
-			// Eq. (3) from 3D Gaussian splatting paper.
-			for (int ch = 0; ch < CHANNELS; ch++)
-				C[ch] += features[collected_id[j] * CHANNELS + ch] * alpha * T;
+                    last_contributor = contributor;
+                }
+                contributor += min(BLOCK_SIZE, toDo);
+            }
 
-			T = test_T;
-
-			// Keep track of last range entry to update this
-			// pixel.
-			last_contributor = contributor;
-		}
-	}
-
-	// All threads that treat valid pixel write out their final
-	// rendering data to the frame and auxiliary buffers.
-	if (inside)
-	{
-		final_T[pix_id] = T;
-		n_contrib[pix_id] = last_contributor;
-		for (int ch = 0; ch < CHANNELS; ch++)
-			out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
-	}
+            if (inside) {
+                final_T[pix_id] = T;
+                n_contrib[pix_id] = last_contributor;
+                for (int ch = 0; ch < CHANNELS; ch++)
+                    out_color[ch * H * W + pix_id] = C[ch] + T * bg_color[ch];
+            }
+        }
+    }
 }
 
 void FORWARD::render(
@@ -386,7 +347,7 @@ void FORWARD::render(
 	const float* bg_color,
 	float* out_color)
 {
-	renderCUDA<NUM_CHANNELS> << <grid, block >> > (
+	renderCUDA<NUM_CHANNELS>(
 		ranges,
 		point_list,
 		W, H,
@@ -425,7 +386,7 @@ void FORWARD::preprocess(int P, int D, int M,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	preprocessCUDA<NUM_CHANNELS> << <(P + 255) / 256, 256 >> > (
+	preprocessCUDA<NUM_CHANNELS>(
 		P, D, M,
 		means3D,
 		scales,

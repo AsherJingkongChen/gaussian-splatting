@@ -28,8 +28,8 @@ def readImages(renders_dir, gt_dir):
     for fname in os.listdir(renders_dir):
         render = Image.open(renders_dir / fname)
         gt = Image.open(gt_dir / fname)
-        renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :].cuda())
-        gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :].cuda())
+        renders.append(tf.to_tensor(render).unsqueeze(0)[:, :3, :, :].cpu())
+        gts.append(tf.to_tensor(gt).unsqueeze(0)[:, :3, :, :].cpu())
         image_names.append(fname)
     return renders, gts, image_names
 
@@ -94,8 +94,8 @@ def evaluate(model_paths):
         json.dump(per_view_dict[scene_dir], fp, indent=True)
 
 if __name__ == "__main__":
-    device = torch.device("cuda:0")
-    torch.cuda.set_device(device)
+    device = torch.device("cpu")
+    torch.cpu.set_device(device)
 
     # Set up command line argument parser
     parser = ArgumentParser(description="Training script parameters")
