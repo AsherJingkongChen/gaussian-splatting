@@ -59,12 +59,9 @@ void duplicateWithKeys(
 	uint64_t* gaussian_keys_unsorted,
 	uint32_t* gaussian_values_unsorted,
 	int* radii,
-	dim3 grid,
-	dim3 block)
+	dim3 grid)
 {
-	auto size = min(block.x * block.y * block.z, P);
-	for (uint32_t idx = 0; idx < size; idx++) {
-
+	for (uint32_t idx = 0; idx < P; idx++) {
 	// Generate no key/value pair for invisible Gaussians
 	if (radii[idx] > 0)
 	{
@@ -92,18 +89,15 @@ void duplicateWithKeys(
 			}
 		}
 	}
-
 	}
 }
 
 // Check keys to see if it is at the start/end of one tile's range in 
 // the full sorted list. If yes, write start/end of this tile. 
 // Run once per instanced (duplicated) Gaussian ID.
-void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges, dim3 grid, dim3 block)
+void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges, dim3 grid)
 {
-	auto size = min(block.x * block.y * block.z, L);
-	for (uint32_t idx = 0; idx < size; idx++) {
-
+	for (uint32_t idx = 0; idx < L; idx++) {
 	// Read tile ID from key. Update start/end of tile range if at limit.
 	uint64_t key = point_list_keys[idx];
 	uint32_t currtile = key >> 32;
@@ -120,7 +114,6 @@ void identifyTileRanges(int L, uint64_t* point_list_keys, uint2* ranges, dim3 gr
 	}
 	if (idx == L - 1)
 		ranges[currtile].y = L;
-
 	}
 }
 
@@ -265,7 +258,6 @@ int CudaRasterizer::Rasterizer::forward(
 		geomState.rgb,
 		geomState.conic_opacity,
 		tile_grid,
-		block,
 		geomState.tiles_touched,
 		prefiltered
 	), debug)
@@ -299,8 +291,7 @@ int CudaRasterizer::Rasterizer::forward(
 		binningState.point_list_keys_unsorted,
 		binningState.point_list_unsorted,
 		radii,
-		tile_grid,
-		block);
+		tile_grid);
 	CHECK_CUDA(, debug)
 
 	printf("forward %d\n", 11);
@@ -323,8 +314,7 @@ int CudaRasterizer::Rasterizer::forward(
 			num_rendered,
 			binningState.point_list_keys,
 			imgState.ranges,
-			tile_grid,
-			block);
+			tile_grid);
 	CHECK_CUDA(, debug)
 
 	// Let each tile blend its range of Gaussians independently in parallel
@@ -428,9 +418,7 @@ void CudaRasterizer::Rasterizer::backward(
 	printf("backward %d\n", 6);
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
 	printf("backward %d\n", 7);
-	CHECK_CUDA(BACKWARD::preprocess(
-		block,
-		P, D, M,
+	CHECK_CUDA(BACKWARD::preprocess(P, D, M,
 		(float3*)means3D,
 		radii,
 		shs,

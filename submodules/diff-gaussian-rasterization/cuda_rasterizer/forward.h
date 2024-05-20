@@ -43,7 +43,6 @@ namespace FORWARD
 		float* colors,
 		float4* conic_opacity,
 		const dim3 grid,
-		const dim3 block,
 		uint32_t* tiles_touched,
 		bool prefiltered);
 

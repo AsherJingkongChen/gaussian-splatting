@@ -176,13 +176,10 @@ void preprocessCUDA(int P, int D, int M,
 	float* rgb,
 	float4* conic_opacity,
 	const dim3 grid,
-	const dim3 block,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
-	auto size = min(block.x * block.y * block.z, P);
-	for (uint32_t idx = 0; idx < size; idx++) {
-
+	for (auto idx = 0; idx < P; idx++) {
 	// Initialize radius and touched tiles to 0. If this isn't changed,
 	// this Gaussian will not be processed further.
 	radii[idx] = 0;
@@ -253,7 +250,6 @@ void preprocessCUDA(int P, int D, int M,
 	// Inverse 2D covariance and opacity neatly pack into one float4
 	conic_opacity[idx] = { conic.x, conic.y, conic.z, opacities[idx] };
 	tiles_touched[idx] = (rect_max.y - rect_min.y) * (rect_max.x - rect_min.x);
-
 	}
 }
 
@@ -435,7 +431,6 @@ void FORWARD::preprocess(int P, int D, int M,
 	float* rgb,
 	float4* conic_opacity,
 	const dim3 grid,
-	const dim3 block,
 	uint32_t* tiles_touched,
 	bool prefiltered)
 {
@@ -463,7 +458,6 @@ void FORWARD::preprocess(int P, int D, int M,
 		rgb,
 		conic_opacity,
 		grid,
-		block,
 		tiles_touched,
 		prefiltered
 		);
