@@ -129,7 +129,7 @@ CudaRasterizer::GeometryState CudaRasterizer::GeometryState::fromChunk(char*& ch
 	obtain(chunk, geom.rgb, P * 3, 128);
 	obtain(chunk, geom.tiles_touched, P, 128);
 	geom.scan_size = 0;
-	obtain(chunk, geom.scanning_space, geom.scan_size, 128);
+	geom.scanning_space = nullptr;
 	obtain(chunk, geom.point_offsets, P, 128);
 	return geom;
 }
@@ -151,7 +151,7 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 	obtain(chunk, binning.point_list_keys, P, 128);
 	obtain(chunk, binning.point_list_keys_unsorted, P, 128);
 	binning.sorting_size = 0;
-	obtain(chunk, binning.list_sorting_space, binning.sorting_size, 128);
+	binning.list_sorting_space = nullptr;
 	return binning;
 }
 
@@ -262,7 +262,19 @@ int CudaRasterizer::Rasterizer::forward(
 		prefiltered
 	), debug)
 
-	printf(": geomState = %d %d\n", geomState.scan_size, geomState.tiles_touched[0]);
+	printf(": %.2f %d %d %.2f %.2f %.2f %.2f %u %hhd %u %u %u\n",
+	geomState.depths[0], // P
+	geomState.clamped[0], // P * 3
+	geomState.internal_radii[0], // P
+	geomState.means2D[0].x, // P
+	geomState.cov3D[0], // P * 6
+	geomState.conic_opacity[0].x, // P
+	geomState.rgb[0], // P * 3
+	geomState.tiles_touched[0], // P
+	geomState.point_offsets[0], // P
+	geomState.point_offsets[1], // P
+	geomState.point_offsets[2] // P
+	);
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
@@ -271,11 +283,11 @@ int CudaRasterizer::Rasterizer::forward(
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
 	printf("forward %d\n", 7);
-	int num_rendered = (int)geomState.point_offsets[P - 1];
+	auto num_rendered = geomState.point_offsets[P - 1];
 
 	printf("forward %d\n", 8);
 	size_t binning_chunk_size = required<BinningState>(num_rendered);
-	printf(": P = %d, num_rendered = %d, binning_chunk_size = %zu\n", P, num_rendered, binning_chunk_size);
+	printf(": P = %d, num_rendered = %u, binning_chunk_size = %zu\n", P, num_rendered, binning_chunk_size);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);
 
 	printf("forward %d\n", 9);
