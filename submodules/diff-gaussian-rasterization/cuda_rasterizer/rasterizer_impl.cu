@@ -10,6 +10,7 @@
  */
 
 #include "rasterizer_impl.h"
+#include <torch/extension.h>
 #include <iostream>
 #include <fstream>
 #include <algorithm>
@@ -155,13 +156,34 @@ CudaRasterizer::BinningState CudaRasterizer::BinningState::fromChunk(char*& chun
 	obtain(chunk, binning.point_list_unsorted, P, 128);
 	obtain(chunk, binning.point_list_keys, P, 128);
 	obtain(chunk, binning.point_list_keys_unsorted, P, 128);
-	assert(false);
-	cub::DeviceRadixSort::SortPairs(
-		nullptr, binning.sorting_size,
-		binning.point_list_keys_unsorted, binning.point_list_keys,
-		binning.point_list_unsorted, binning.point_list, P);
+	binning.sorting_size = P * 13;
 	obtain(chunk, binning.list_sorting_space, binning.sorting_size, 128);
 	return binning;
+}
+
+void sortPairsCPU(
+    void* sorting_space,  // assuming this is a void* to a buffer
+    size_t sorting_size,
+    uint64_t* point_list_keys_unsorted, uint64_t* point_list_keys,
+    uint32_t* point_list_unsorted, uint32_t* point_list,
+    int num_rendered, int begin, int end)
+{
+    // Radix sort implementation using std::sort
+    std::vector<std::pair<uint64_t, uint32_t>> keys_and_points(num_rendered);
+    for (int i = 0; i < num_rendered; i++) {
+        keys_and_points[i].first = point_list_keys_unsorted[i];
+        keys_and_points[i].second = point_list_unsorted[i];
+    }
+
+    std::sort(keys_and_points.begin(), keys_and_points.end(),
+              [](const std::pair<uint64_t, uint32_t>& a, const std::pair<uint64_t, uint32_t>& b) {
+                  return a.first < b.first;
+              });
+
+    for (int i = 0; i < num_rendered; i++) {
+        point_list_keys[i] = keys_and_points[i].first;
+        point_list[i] = keys_and_points[i].second;
+    }
 }
 
 // Forward rendering procedure for differentiable rasterization
@@ -274,13 +296,12 @@ int CudaRasterizer::Rasterizer::forward(
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
-	assert(false);
-	CHECK_CUDA(cub::DeviceRadixSort::SortPairs(
+	sortPairsCPU(
 		binningState.list_sorting_space,
 		binningState.sorting_size,
 		binningState.point_list_keys_unsorted, binningState.point_list_keys,
 		binningState.point_list_unsorted, binningState.point_list,
-		num_rendered, 0, 32 + bit), debug)
+		num_rendered, 0, 32 + bit);
 
 	memset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
