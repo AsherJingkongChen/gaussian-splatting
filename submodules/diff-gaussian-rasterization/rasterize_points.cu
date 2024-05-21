@@ -27,7 +27,6 @@
 std::function<char*(size_t N)> resizeFunctional(torch::Tensor& t) {
     auto lambda = [&t](size_t N) {
         t.resize_({(long long)N});
-		t.zero_();
 		return reinterpret_cast<char*>(t.contiguous().data_ptr());
     };
     return lambda;

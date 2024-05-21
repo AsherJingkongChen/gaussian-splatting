@@ -184,7 +184,8 @@ void preprocessCUDA(int P, int D, int M,
 	// this Gaussian will not be processed further.
 	radii[idx] = 0;
 	tiles_touched[idx] = 0;
-
+	}
+	for (auto idx = 0; idx < P; idx++) {
 	// Perform near culling, quit if outside.
 	float3 p_view;
 	if (!in_frustum(idx, orig_points, viewmatrix, projmatrix, prefiltered, p_view))
