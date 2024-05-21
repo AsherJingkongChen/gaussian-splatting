@@ -30,6 +30,7 @@ namespace cg = cooperative_groups;
 #include "forward.h"
 #include "backward.h"
 
+#define DEBUG if (false)
 // Helper function to find the next-highest bit of the MSB
 // on the CPU.
 uint32_t getHigherMsb(uint32_t n)
@@ -207,10 +208,10 @@ int CudaRasterizer::Rasterizer::forward(
 	const float focal_y = height / (2.0f * tan_fovy);
 	const float focal_x = width / (2.0f * tan_fovx);
 
-	printf("forward %d\n", 1);
+	DEBUG printf("forward %d\n", 1);
 	size_t chunk_size = required<GeometryState>(P);
 	char* chunkptr = geometryBuffer(chunk_size);
-	printf("forward %d\n", 2);
+	DEBUG printf("forward %d\n", 2);
 	GeometryState geomState = GeometryState::fromChunk(chunkptr, P);
 
 	if (radii == nullptr)
@@ -222,10 +223,10 @@ int CudaRasterizer::Rasterizer::forward(
 	dim3 block(BLOCK_X, BLOCK_Y, 1);
 
 	// Dynamically resize image-based auxiliary buffers during training
-	printf("forward %d\n", 3);
+	DEBUG printf("forward %d\n", 3);
 	size_t img_chunk_size = required<ImageState>(width * height);
 	char* img_chunkptr = imageBuffer(img_chunk_size);
-	printf("forward %d\n", 4);
+	DEBUG printf("forward %d\n", 4);
 	ImageState imgState = ImageState::fromChunk(img_chunkptr, width * height);
 
 	if (NUM_CHANNELS != 3 && colors_precomp == nullptr)
@@ -234,7 +235,7 @@ int CudaRasterizer::Rasterizer::forward(
 	}
 
 	// Run preprocessing per-Gaussian (transformation, bounding, conversion of SHs to RGB)
-	printf("forward %d\n", 5);
+	DEBUG printf("forward %d\n", 5);
 	CHECK_CUDA(FORWARD::preprocess(
 		P, D, M,
 		means3D,
@@ -262,40 +263,32 @@ int CudaRasterizer::Rasterizer::forward(
 		prefiltered
 	), debug)
 
-	printf(": %.2f %d %d %.2f %.2f %.2f %.2f %u %hhd %u %u %u\n",
-	geomState.depths[0], // P
-	geomState.clamped[0], // P * 3
-	geomState.internal_radii[0], // P
-	geomState.means2D[0].x, // P
-	geomState.cov3D[0], // P * 6
-	geomState.conic_opacity[0].x, // P
-	geomState.rgb[0], // P * 3
-	geomState.tiles_touched[0], // P
-	geomState.point_offsets[0], // P
-	geomState.point_offsets[1], // P
-	geomState.point_offsets[2] // P
-	);
+	printf(": geomState.tiles_touched = {");
+	for (auto i = 0; i < 20; i++) {
+		printf(" %u", geomState.tiles_touched[i]);
+	}
+	printf(" };\n");
 
 	// Compute prefix sum over full list of touched tile counts by Gaussians
 	// E.g., [2, 3, 0, 2, 1] -> [2, 5, 5, 7, 8]
-	printf("forward %d\n", 6);
+	DEBUG printf("forward %d\n", 6);
 	std::inclusive_scan(geomState.tiles_touched, geomState.tiles_touched + P, geomState.point_offsets);
 
 	// Retrieve total number of Gaussian instances to launch and resize aux buffers
-	printf("forward %d\n", 7);
+	DEBUG printf("forward %d\n", 7);
 	auto num_rendered = geomState.point_offsets[P - 1];
+	DEBUG printf(": P = %d, num_rendered = %u\n", P, num_rendered);
 
-	printf("forward %d\n", 8);
+	DEBUG printf("forward %d\n", 8);
 	size_t binning_chunk_size = required<BinningState>(num_rendered);
-	printf(": P = %d, num_rendered = %u, binning_chunk_size = %zu\n", P, num_rendered, binning_chunk_size);
 	char* binning_chunkptr = binningBuffer(binning_chunk_size);
 
-	printf("forward %d\n", 9);
+	DEBUG printf("forward %d\n", 9);
 	BinningState binningState = BinningState::fromChunk(binning_chunkptr, num_rendered);
 
 	// For each instance to be rendered, produce adequate [ tile | depth ] key 
 	// and corresponding dublicated Gaussian indices to be sorted
-	printf("forward %d\n", 10);
+	DEBUG printf("forward %d\n", 10);
 	duplicateWithKeys(
 		P,
 		geomState.means2D,
@@ -307,21 +300,21 @@ int CudaRasterizer::Rasterizer::forward(
 		tile_grid);
 	CHECK_CUDA(, debug)
 
-	printf("forward %d\n", 11);
+	DEBUG printf("forward %d\n", 11);
 	int bit = getHigherMsb(tile_grid.x * tile_grid.y);
 
 	// Sort complete list of (duplicated) Gaussian indices by keys
-	printf("forward %d\n", 12);
+	DEBUG printf("forward %d\n", 12);
 	sortPairsCPU(
 		binningState.point_list_keys_unsorted, binningState.point_list_keys,
 		binningState.point_list_unsorted, binningState.point_list,
 		num_rendered);
 
-	printf("forward %d\n", 13);
+	DEBUG printf("forward %d\n", 13);
 	memset(imgState.ranges, 0, tile_grid.x * tile_grid.y * sizeof(uint2));
 
 	// Identify start and end of per-tile workloads in sorted list
-	printf("forward %d\n", 14);
+	DEBUG printf("forward %d\n", 14);
 	if (num_rendered > 0)
 		identifyTileRanges(
 			num_rendered,
@@ -331,9 +324,9 @@ int CudaRasterizer::Rasterizer::forward(
 	CHECK_CUDA(, debug)
 
 	// Let each tile blend its range of Gaussians independently in parallel
-	printf("forward %d\n", 15);
+	DEBUG printf("forward %d\n", 15);
 	const float* feature_ptr = colors_precomp != nullptr ? colors_precomp : geomState.rgb;
-	printf("forward %d\n", 16);
+	DEBUG printf("forward %d\n", 16);
 	CHECK_CUDA(FORWARD::render(
 		tile_grid, block,
 		imgState.ranges,
@@ -346,7 +339,7 @@ int CudaRasterizer::Rasterizer::forward(
 		imgState.n_contrib,
 		background,
 		out_color), debug)
-	printf("forward %d\n", 17);
+	DEBUG printf("forward %d\n", 17);
 	return num_rendered;
 }
 
@@ -383,11 +376,11 @@ void CudaRasterizer::Rasterizer::backward(
 	float* dL_drot,
 	bool debug)
 {
-	printf("backward %d\n", 1);
+	DEBUG printf("backward %d\n", 1);
 	GeometryState geomState = GeometryState::fromChunk(geom_buffer, P);
-	printf("backward %d\n", 2);
+	DEBUG printf("backward %d\n", 2);
 	BinningState binningState = BinningState::fromChunk(binning_buffer, R);
-	printf("backward %d\n", 3);
+	DEBUG printf("backward %d\n", 3);
 	ImageState imgState = ImageState::fromChunk(img_buffer, width * height);
 
 	if (radii == nullptr)
@@ -404,9 +397,9 @@ void CudaRasterizer::Rasterizer::backward(
 	// Compute loss gradients w.r.t. 2D mean position, conic matrix,
 	// opacity and RGB of Gaussians from per-pixel loss gradients.
 	// If we were given precomputed colors and not SHs, use them.
-	printf("backward %d\n", 4);
+	DEBUG printf("backward %d\n", 4);
 	const float* color_ptr = (colors_precomp != nullptr) ? colors_precomp : geomState.rgb;
-	printf("backward %d\n", 5);
+	DEBUG printf("backward %d\n", 5);
 	CHECK_CUDA(BACKWARD::render(
 		tile_grid,
 		block,
@@ -428,9 +421,9 @@ void CudaRasterizer::Rasterizer::backward(
 	// Take care of the rest of preprocessing. Was the precomputed covariance
 	// given to us or a scales/rot pair? If precomputed, pass that. If not,
 	// use the one we computed ourselves.
-	printf("backward %d\n", 6);
+	DEBUG printf("backward %d\n", 6);
 	const float* cov3D_ptr = (cov3D_precomp != nullptr) ? cov3D_precomp : geomState.cov3D;
-	printf("backward %d\n", 7);
+	DEBUG printf("backward %d\n", 7);
 	CHECK_CUDA(BACKWARD::preprocess(P, D, M,
 		(float3*)means3D,
 		radii,
@@ -454,5 +447,5 @@ void CudaRasterizer::Rasterizer::backward(
 		(glm::vec3*)dL_dscale,
 		(glm::vec4*)dL_drot), debug)
 
-	printf("backward %d\n", 8);
+	DEBUG printf("backward %d\n", 8);
 }
